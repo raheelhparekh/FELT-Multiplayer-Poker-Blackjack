@@ -1,0 +1,19 @@
+{
+  "name": "@felt/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "simulate": "node --experimental-vm-modules dist/simulate/run.js",
+    "bots": "node dist/bot/headless-session.js",
+    "load-test": "node dist/bot/load-test.js",
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@felt/shared": "workspace:*",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0"
+  }
+}

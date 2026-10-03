@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root,
+  [data-theme="classic-green"] {
+    --felt-bg: #07190c;
+    --felt-surface-from: #195a32;
+    --felt-surface-via: #0f3d20;
+    --felt-surface-to: #07190c;
+    --felt-rail: #0c2214;
+    --felt-text: #a8c7b5;
+    --felt-accent: #d4af37;
+    --accent-glow: rgba(212, 175, 55, 0.4);
+  }
+
+  [data-theme="dark-luxury"] {
+    --felt-bg: #09090b;
+    --felt-surface-from: #271217;
+    --felt-surface-via: #180d11;
+    --felt-surface-to: #0c080a;
+    --felt-rail: #1c1917;
+    --felt-text: #e2d9d2;
+    --felt-accent: #f0d060;
+    --accent-glow: rgba(240, 208, 96, 0.4);
+  }
+
+  html,
+  body {
+    background-color: var(--felt-bg);
+    color: var(--felt-text);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+}
+
+/* 3D Card Flip & Perspective Helpers */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Shimmer Keyframes for Blackjack Special Moments */
+@keyframes gold-shimmer {
+  0% {
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.4), inset 0 0 15px rgba(212, 175, 55, 0.2);
+    border-color: #f0d060;
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(240, 208, 96, 0.8), inset 0 0 25px rgba(240, 208, 96, 0.4);
+    border-color: #ffffff;
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.4), inset 0 0 15px rgba(212, 175, 55, 0.2);
+    border-color: #f0d060;
+  }
+}
+
+.animate-gold-shimmer {
+  animation: gold-shimmer 1.8s infinite ease-in-out;
+}
+
+/* Bust Shake Keyframes */
+@keyframes bust-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px) rotate(-1deg);
+  }
+  40% {
+    transform: translateX(6px) rotate(1deg);
+  }
+  60% {
+    transform: translateX(-4px) rotate(-0.5deg);
+  }
+  80% {
+    transform: translateX(4px) rotate(0.5deg);
+  }
+}
+
+.animate-bust-shake {
+  animation: bust-shake 0.4s ease-in-out;
+}
+
+/* Float Up & Fade for Payout Chips */
+@keyframes float-up-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-5px) scale(1.05);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.95);
+  }
+}
+
+.animate-float-payout {
+  animation: float-up-fade 2s ease-out forwards;
+}
+
+/* Active Turn Pulse */
+@keyframes turn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(212, 175, 55, 0);
+  }
+}
+
+.animate-turn-pulse {
+  animation: turn-pulse 1.8s infinite;
+}

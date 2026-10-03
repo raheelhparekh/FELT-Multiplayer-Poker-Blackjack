@@ -1,0 +1,322 @@
+import type {
+  ActivityEntry,
+  ChatMessage,
+  ClientGameView,
+  GameEvent,
+  GamePhase,
+  Participant,
+  RoomConfig,
+  ServerError,
+} from "@felt/shared";
+import { type Socket, io } from "socket.io-client";
+
+export class TestClient {
+  public socket: Socket | null = null;
+  public playerId = "";
+  public token = "";
+  public roomCode = "";
+  public displayName = "";
+  public latestSnapshot: ClientGameView | null = null;
+
+  public receivedSnapshots: Array<{ seq: number; data: ClientGameView }> = [];
+  public receivedEvents: GameEvent[] = [];
+  public receivedActivities: ActivityEntry[] = [];
+  public receivedChats: ChatMessage[] = [];
+  public receivedErrors: ServerError[] = [];
+  public presenceUpdates: Array<{ playerId: string; isConnected: boolean }> = [];
+
+  constructor(public readonly name: string) {}
+
+  public async connect(serverUrl: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket = io(serverUrl, {
+        transports: ["websocket"],
+        autoConnect: true,
+        forceNew: true,
+      });
+
+      this.socket.on("connect", () => {
+        resolve();
+      });
+
+      this.socket.on("connect_error", (err) => {
+        reject(err);
+      });
+
+      this.socket.on("snapshot", (payload: { seq: number; data: ClientGameView }) => {
+        this.latestSnapshot = payload.data;
+        this.receivedSnapshots.push(payload);
+      });
+
+      this.socket.on("events", (payload: { seq: number; events: GameEvent[] }) => {
+        this.receivedEvents.push(...payload.events);
+      });
+
+      this.socket.on("activity", (payload: { type: string; entry: ActivityEntry }) => {
+        this.receivedActivities.push(payload.entry);
+      });
+
+      this.socket.on("chat", (payload: { type: string; message: ChatMessage }) => {
+        this.receivedChats.push(payload.message);
+      });
+
+      this.socket.on("error", (err: ServerError) => {
+        this.receivedErrors.push(err);
+      });
+
+      this.socket.on(
+        "presence",
+        (update: { type: string; playerId: string; isConnected: boolean }) => {
+          this.presenceUpdates.push({
+            playerId: update.playerId,
+            isConnected: update.isConnected,
+          });
+        },
+      );
+    });
+  }
+
+  public async createRoom(params: {
+    displayName: string;
+    avatarId: string;
+    password?: string;
+    config?: RoomConfig;
+  }): Promise<{ roomCode: string; token: string; participant: Participant }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) return reject(new Error("Socket not connected"));
+      this.displayName = params.displayName;
+
+      this.socket.emit(
+        "room:create",
+        params,
+        (res: {
+          ok: boolean;
+          data?: { roomCode: string; token: string; participant: Participant };
+          error?: ServerError;
+        }) => {
+          if (!res?.ok || !res.data) {
+            return reject(new Error(res?.error?.message ?? "Failed to create room"));
+          }
+          this.roomCode = res.data.roomCode;
+          this.token = res.data.token;
+          this.playerId = res.data.participant.id;
+          resolve(res.data);
+        },
+      );
+    });
+  }
+
+  public async joinRoom(params: {
+    code: string;
+    displayName: string;
+    avatarId: string;
+    token?: string;
+    password?: string;
+  }): Promise<{
+    roomCode: string;
+    token: string;
+    participant: Participant;
+    isReconnect?: boolean;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) return reject(new Error("Socket not connected"));
+      this.displayName = params.displayName;
+
+      this.socket.emit(
+        "room:join",
+        params,
+        (res: {
+          ok: boolean;
+          data?: {
+            roomCode: string;
+            token: string;
+            participant: Participant;
+            isReconnect?: boolean;
+          };
+          error?: ServerError;
+        }) => {
+          if (!res?.ok || !res.data) {
+            return reject(new Error(res?.error?.message ?? "Failed to join room"));
+          }
+          this.roomCode = res.data.roomCode;
+          this.token = res.data.token;
+          this.playerId = res.data.participant.id;
+          resolve(res.data);
+        },
+      );
+    });
+  }
+
+  public emitIntent(event: string, payload: unknown = {}): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) return reject(new Error("Socket not connected"));
+      this.socket.emit(event, payload, (res: { ok: boolean; error?: ServerError }) => {
+        if (res && !res.ok) {
+          return reject(new Error(res.error?.message ?? `Action ${event} failed`));
+        }
+        resolve();
+      });
+    });
+  }
+
+  public sit(seat: number): Promise<void> {
+    return this.emitIntent("seat:sit", { seat });
+  }
+
+  public stand(): Promise<void> {
+    return this.emitIntent("seat:stand");
+  }
+
+  public setDealer(targetId: string): Promise<void> {
+    return this.emitIntent("host:setDealer", { targetId });
+  }
+
+  public assignSeat(targetId: string, seat: number | null): Promise<void> {
+    return this.emitIntent("host:assignSeat", { targetId, seat });
+  }
+
+  public startSession(): Promise<void> {
+    return this.emitIntent("host:startSession");
+  }
+
+  public pause(): Promise<void> {
+    return this.emitIntent("host:pause");
+  }
+
+  public resume(): Promise<void> {
+    return this.emitIntent("host:resume");
+  }
+
+  public kick(targetId: string): Promise<void> {
+    return this.emitIntent("host:kick", { targetId });
+  }
+
+  public transferHost(targetId: string): Promise<void> {
+    return this.emitIntent("host:transferHost", { targetId });
+  }
+
+  public adjustChips(
+    target: string,
+    op: "set" | "add" | "subtract",
+    amount: number,
+  ): Promise<void> {
+    return this.emitIntent("host:adjustChips", { target, op, amount });
+  }
+
+  public updateConfig(config: Partial<RoomConfig>): Promise<void> {
+    return this.emitIntent("host:updateConfig", { config });
+  }
+
+  public betAdd(amount: number): Promise<void> {
+    return this.emitIntent("bet:add", { amount });
+  }
+
+  public betUndo(): Promise<void> {
+    return this.emitIntent("bet:undo");
+  }
+
+  public betClear(): Promise<void> {
+    return this.emitIntent("bet:clear");
+  }
+
+  public betRepeat(): Promise<void> {
+    return this.emitIntent("bet:repeat");
+  }
+
+  public betLock(): Promise<void> {
+    return this.emitIntent("bet:lock");
+  }
+
+  public betSitOut(): Promise<void> {
+    return this.emitIntent("bet:sitOut");
+  }
+
+  public dealerDeal(): Promise<void> {
+    return this.emitIntent("dealer:deal");
+  }
+
+  public dealerReveal(): Promise<void> {
+    return this.emitIntent("dealer:reveal");
+  }
+
+  public dealerNextRound(): Promise<void> {
+    return this.emitIntent("dealer:nextRound");
+  }
+
+  public playHit(handId: string): Promise<void> {
+    return this.emitIntent("play:hit", { handId });
+  }
+
+  public playStand(handId: string): Promise<void> {
+    return this.emitIntent("play:stand", { handId });
+  }
+
+  public playDouble(handId: string): Promise<void> {
+    return this.emitIntent("play:double", { handId });
+  }
+
+  public playSplit(handId: string): Promise<void> {
+    return this.emitIntent("play:split", { handId });
+  }
+
+  public playInsurance(handId: string, accept: boolean): Promise<void> {
+    return this.emitIntent("play:insurance", { handId, accept });
+  }
+
+  public rebuyRequest(): Promise<void> {
+    return this.emitIntent("rebuy:request");
+  }
+
+  public hostApproveRebuy(targetId: string): Promise<void> {
+    return this.emitIntent("host:approveRebuy", { targetId });
+  }
+
+  public sendChat(text: string): Promise<void> {
+    return this.emitIntent("chat:send", { text });
+  }
+
+  public async waitForSnapshot(
+    predicate: (view: ClientGameView) => boolean,
+    timeoutMs = 5000,
+  ): Promise<ClientGameView> {
+    if (this.latestSnapshot && predicate(this.latestSnapshot)) {
+      return this.latestSnapshot;
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(
+          new Error(
+            `Timeout (${timeoutMs}ms) waiting for snapshot condition. Latest phase: ${this.latestSnapshot?.phase}`,
+          ),
+        );
+      }, timeoutMs);
+
+      const handler = (payload: { data: ClientGameView }) => {
+        if (predicate(payload.data)) {
+          cleanup();
+          resolve(payload.data);
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.socket?.off("snapshot", handler);
+      };
+
+      this.socket?.on("snapshot", handler);
+    });
+  }
+
+  public async waitForPhase(phase: GamePhase, timeoutMs = 5000): Promise<ClientGameView> {
+    return this.waitForSnapshot((v) => v.phase === phase, timeoutMs);
+  }
+
+  public disconnect(): void {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+  }
+}

@@ -1,0 +1,16 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tools"
+
+# Pre-approve native packages that run postinstall build scripts.
+# This avoids the interactive `pnpm approve-builds` prompt in CI and dev.
+onlyBuiltDependencies:
+  - "@biomejs/biome"
+  - esbuild
+  - better-sqlite3
+  - argon2
+
+allowBuilds:
+  '@biomejs/biome': true
+  esbuild: true
