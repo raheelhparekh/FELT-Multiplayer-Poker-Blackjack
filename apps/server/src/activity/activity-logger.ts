@@ -1,4 +1,4 @@
-import type { ActivityEntry, GameEvent, GameState, Participant } from "@felt/shared";
+import type { ActivityEntry, GameEvent, GameState, Hand, Participant } from "@felt/shared";
 import { evaluateHand } from "@felt/shared";
 
 export function formatEventActivity(
@@ -26,7 +26,7 @@ export function formatEventActivity(
     }
 
     case "handResult": {
-      const hand = state.hands.find((h) => h.id === event.handId);
+      const hand = state.hands.find((h: Hand) => h.id === event.handId);
       const name = hand ? getName(hand.playerId) : "Player";
       const total = hand ? evaluateHand(hand.cards).total : 0;
 

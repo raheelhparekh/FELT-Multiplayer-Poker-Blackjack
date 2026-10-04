@@ -5,6 +5,7 @@ import type {
   GameAction,
   GameEvent,
   GamePhase,
+  Hand,
   Participant,
   Role,
   RoomConfig,
@@ -348,7 +349,7 @@ export class Room {
       this.state.phase !== "round_summary" &&
       this.state.phase !== "betting"
     ) {
-      const hasActiveHand = this.state.hands.some((h) => h.playerId === playerId && !h.isLocked);
+      const hasActiveHand = this.state.hands.some((h: Hand) => h.playerId === playerId && !h.isLocked);
       if (hasActiveHand) {
         throw new EngineError("ILLEGAL_ACTION", "Cannot stand while playing an active hand");
       }
@@ -680,7 +681,7 @@ export class Room {
       case "play:stand":
       case "play:double":
       case "play:split": {
-        const activeHand = this.state.hands.find((h) => h.id === this.state.activeHandId);
+        const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
         if (!activeHand || activeHand.playerId !== playerId) {
           throw new EngineError("NOT_YOUR_TURN", "It is not your turn");
         }
@@ -862,7 +863,7 @@ export class Room {
   private handleActionTimerExpiry(): void {
     if (this.state.phase !== "player_turns" || !this.state.activeHandId) return;
 
-    const activeHand = this.state.hands.find((h) => h.id === this.state.activeHandId);
+    const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
     if (!activeHand) return;
 
     // Per brief: Auto-STAND on expiry, NEVER auto-hit!

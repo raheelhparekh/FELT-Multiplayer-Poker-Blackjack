@@ -31,10 +31,14 @@ export function setupSocketIO(
       let message = "An internal server error occurred";
 
       if (err instanceof EngineError) {
-        code = err.code;
-        message = err.message;
+        code = (err as EngineError).code;
+        message = (err as EngineError).message;
       } else if (err instanceof Error) {
-        message = err.message;
+        message = (err as Error).message;
+      } else if (typeof err === "object" && err !== null && "message" in err) {
+        message = String((err as { message: unknown }).message);
+      } else if (typeof err === "string") {
+        message = err;
       }
 
       socket.emit("error", {

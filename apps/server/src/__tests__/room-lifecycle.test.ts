@@ -1,3 +1,4 @@
+import type { Participant } from "@felt/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppInstance, createServer } from "../server.js";
 import { TestClient } from "./test-client.js";
@@ -67,9 +68,9 @@ describe("Room Lifecycle & Presence Integration", () => {
     // Bob sits at seat 1
     await player1.sit(1);
     const snapAfterSit = await player1.waitForSnapshot(
-      (s) => s.participants.find((p) => p.id === player1.playerId)?.seat === 1,
+      (s) => s.participants.find((p: Participant) => p.id === player1.playerId)?.seat === 1,
     );
-    const bob = snapAfterSit.participants.find((p) => p.id === player1.playerId);
+    const bob = snapAfterSit.participants.find((p: Participant) => p.id === player1.playerId);
     expect(bob?.seat).toBe(1);
     expect(bob?.role).toBe("player");
 
@@ -87,16 +88,16 @@ describe("Room Lifecycle & Presence Integration", () => {
     // Charlie sits at seat 2
     await player2.sit(2);
     const snapAfterCharlie = await player2.waitForSnapshot(
-      (s) => s.participants.find((p) => p.id === player2.playerId)?.seat === 2,
+      (s) => s.participants.find((p: Participant) => p.id === player2.playerId)?.seat === 2,
     );
-    expect(snapAfterCharlie.participants.find((p) => p.id === player2.playerId)?.seat).toBe(2);
+    expect(snapAfterCharlie.participants.find((p: Participant) => p.id === player2.playerId)?.seat).toBe(2);
 
     // Bob stands up
     await player1.stand();
     const snapAfterStand = await player1.waitForSnapshot(
-      (s) => s.participants.find((p) => p.id === player1.playerId)?.seat === null,
+      (s) => s.participants.find((p: Participant) => p.id === player1.playerId)?.seat === null,
     );
-    expect(snapAfterStand.participants.find((p) => p.id === player1.playerId)?.seat).toBeNull();
+    expect(snapAfterStand.participants.find((p: Participant) => p.id === player1.playerId)?.seat).toBeNull();
 
     host.disconnect();
     player1.disconnect();
@@ -158,7 +159,7 @@ describe("Room Lifecycle & Presence Integration", () => {
 
     await player.sit(3);
     await player.waitForSnapshot(
-      (s) => s.participants.find((p) => p.id === participant.id)?.seat === 3,
+      (s) => s.participants.find((p: Participant) => p.id === participant.id)?.seat === 3,
     );
 
     // Bob disconnects
@@ -166,7 +167,7 @@ describe("Room Lifecycle & Presence Integration", () => {
 
     // Host sees Bob is disconnected
     await host.waitForSnapshot((s) => {
-      const p = s.participants.find((x) => x.id === participant.id);
+      const p = s.participants.find((x: Participant) => x.id === participant.id);
       return p !== undefined && !p.isConnected && p.seat === 3;
     });
 
@@ -187,9 +188,9 @@ describe("Room Lifecycle & Presence Integration", () => {
 
     // Check snapshot
     const reconnectedSnap = await reconnectedPlayer.waitForSnapshot(
-      (s) => s.participants.find((p) => p.id === participant.id)?.isConnected === true,
+      (s) => s.participants.find((p: Participant) => p.id === participant.id)?.isConnected === true,
     );
-    expect(reconnectedSnap.participants.find((p) => p.id === participant.id)?.seat).toBe(3);
+    expect(reconnectedSnap.participants.find((p: Participant) => p.id === participant.id)?.seat).toBe(3);
 
     host.disconnect();
     reconnectedPlayer.disconnect();
@@ -221,7 +222,7 @@ describe("Room Lifecycle & Presence Integration", () => {
     // Player1 should become the new host
     const snap = await player1.waitForSnapshot((s) => s.hostId === player1.playerId);
     expect(snap.hostId).toBe(player1.playerId);
-    const p1InSnap = snap.participants.find((p) => p.id === player1.playerId);
+    const p1InSnap = snap.participants.find((p: Participant) => p.id === player1.playerId);
     expect(p1InSnap?.isHost).toBe(true);
 
     player1.disconnect();
