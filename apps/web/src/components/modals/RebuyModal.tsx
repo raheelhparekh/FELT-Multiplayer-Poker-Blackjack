@@ -37,13 +37,13 @@ export const RebuyModal: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-white">Chip Rebuy Request</h2>
           <p className="text-xs text-emerald-400/80 mt-1">
-            Current Stack: <span className="font-bold text-white font-mono">{stack}</span>
+            Current Stack: <span className="font-bold text-white font-mono">₹{stack}</span>
           </p>
         </div>
 
         <div className="bg-emerald-950/60 border border-emerald-900/60 rounded-xl p-3 text-xs text-emerald-300">
           Requesting a rebuy will notify the table host to grant you{" "}
-          <strong className="text-gold-300 font-mono">+{startingStack}</strong> chips.
+          <strong className="text-gold-300 font-mono">+₹{startingStack}</strong> chips.
         </div>
 
         <div className="flex gap-2 pt-2">

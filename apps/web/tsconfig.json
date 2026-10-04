@@ -8,7 +8,11 @@
     "jsx": "react-jsx",
     "outDir": "./dist",
     "composite": true,
-    "noEmit": false
+    "noEmit": false,
+    "baseUrl": ".",
+    "paths": {
+      "@felt/shared": ["../../packages/shared/src/index.ts", "../../packages/shared/dist/index.d.ts"]
+    }
   },
   "references": [{ "path": "../../packages/shared" }],
   "include": ["src"]

@@ -75,8 +75,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ isOpen, onClose }) =
                   }`}
                 >
                   {stats.totalNet > 0
-                    ? `+$${stats.totalNet.toLocaleString()}`
-                    : `$${stats.totalNet.toLocaleString()}`}
+                    ? `+₹${stats.totalNet.toLocaleString()}`
+                    : `₹${stats.totalNet.toLocaleString()}`}
                 </span>
               </div>
               <div className="bg-black/40 border border-emerald-900/50 p-2.5 rounded-2xl text-center">
@@ -137,11 +137,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ isOpen, onClose }) =
                           }`}
                         >
                           {item.net > 0
-                            ? `+$${item.net.toLocaleString()}`
-                            : `$${item.net.toLocaleString()}`}
+                            ? `+₹${item.net.toLocaleString()}`
+                            : `₹${item.net.toLocaleString()}`}
                         </span>
                         <span className="text-[10px] text-zinc-500 font-mono">
-                          Final: ${item.finalStack.toLocaleString()}
+                          Final: ₹{item.finalStack.toLocaleString()}
                         </span>
                       </div>
                     </div>

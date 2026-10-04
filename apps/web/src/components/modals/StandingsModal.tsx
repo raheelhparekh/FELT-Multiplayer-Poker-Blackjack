@@ -1,3 +1,4 @@
+import type { ClientHand, Participant } from "@felt/shared";
 import type React from "react";
 import { useGameStore } from "../../store/game-store";
 import { AVATAR_OPTIONS } from "../../types/avatars";
@@ -66,7 +67,7 @@ export const StandingsModal: React.FC = () => {
   const isRoundSummary = phase === "round_summary";
 
   // Sort participants by stack descending
-  const sortedParticipants = [...participants].sort((a, b) => {
+  const sortedParticipants = [...participants].sort((a: Participant, b: Participant) => {
     const stackA = stacks[a.id] ?? 0;
     const stackB = stacks[b.id] ?? 0;
     return stackB - stackA;
@@ -85,7 +86,7 @@ export const StandingsModal: React.FC = () => {
               </h2>
               <p className="text-[11px] text-emerald-400/70 font-mono">
                 Round {roundNumber} • Dealer Bank:{" "}
-                {dealerBank > 0 ? `+${dealerBank.toLocaleString()}` : dealerBank.toLocaleString()}
+                {dealerBank > 0 ? `+₹${dealerBank.toLocaleString()}` : `₹${dealerBank.toLocaleString()}`}
               </p>
             </div>
           </div>
@@ -110,7 +111,7 @@ export const StandingsModal: React.FC = () => {
                   {sortedParticipants[1]?.displayName}
                 </span>
                 <span className="text-[10px] text-zinc-400 font-mono">
-                  ${(stacks[sortedParticipants[1]?.id ?? ""] ?? 0).toLocaleString()}
+                  ₹{(stacks[sortedParticipants[1]?.id ?? ""] ?? 0).toLocaleString()}
                 </span>
               </div>
               {/* 1st Place */}
@@ -120,7 +121,7 @@ export const StandingsModal: React.FC = () => {
                   {sortedParticipants[0]?.displayName}
                 </span>
                 <span className="text-[11px] text-gold-400 font-mono font-bold">
-                  ${(stacks[sortedParticipants[0]?.id ?? ""] ?? 0).toLocaleString()}
+                  ₹{(stacks[sortedParticipants[0]?.id ?? ""] ?? 0).toLocaleString()}
                 </span>
               </div>
               {/* 3rd Place */}
@@ -130,7 +131,7 @@ export const StandingsModal: React.FC = () => {
                   {sortedParticipants[2]?.displayName}
                 </span>
                 <span className="text-[10px] text-zinc-400 font-mono">
-                  ${(stacks[sortedParticipants[2]?.id ?? ""] ?? 0).toLocaleString()}
+                  ₹{(stacks[sortedParticipants[2]?.id ?? ""] ?? 0).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -143,8 +144,8 @@ export const StandingsModal: React.FC = () => {
                 Round {roundNumber} Outcomes
               </h3>
               <div className="space-y-1.5">
-                {hands.map((hand) => {
-                  const p = participants.find((part) => part.id === hand.playerId);
+                {hands.map((hand: ClientHand) => {
+                  const p = participants.find((part: Participant) => part.id === hand.playerId);
                   const isWin = hand.result === "win" || hand.result === "blackjack";
                   const isPush = hand.result === "push";
                   const isLoss = hand.result === "loss" || hand.result === "bust";
@@ -166,7 +167,7 @@ export const StandingsModal: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] text-emerald-400/70 font-mono">
-                          Bet: ${hand.bet + hand.doubleBet}
+                          Bet: ₹{hand.bet + hand.doubleBet}
                         </span>
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
@@ -200,7 +201,7 @@ export const StandingsModal: React.FC = () => {
             </div>
 
             <div className="divide-y divide-emerald-900/30">
-              {sortedParticipants.map((p, index) => {
+              {sortedParticipants.map((p: Participant, index: number) => {
                 const stack = stacks[p.id] ?? 0;
                 const buyIn = config.startingStack;
                 const net = stack - buyIn;
@@ -246,14 +247,14 @@ export const StandingsModal: React.FC = () => {
                     </div>
 
                     <span className="col-span-2 text-right font-mono font-bold text-white">
-                      ${stack.toLocaleString()}
+                      ₹{stack.toLocaleString()}
                     </span>
                     <span
                       className={`col-span-3 text-right font-mono font-bold ${
                         net > 0 ? "text-emerald-400" : net < 0 ? "text-rose-400" : "text-zinc-400"
                       }`}
                     >
-                      {net > 0 ? `+$${net.toLocaleString()}` : `$${net.toLocaleString()}`}
+                      {net > 0 ? `+₹${net.toLocaleString()}` : `₹${net.toLocaleString()}`}
                     </span>
                   </div>
                 );

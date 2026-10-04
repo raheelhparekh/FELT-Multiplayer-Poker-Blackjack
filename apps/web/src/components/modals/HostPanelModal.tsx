@@ -1,3 +1,4 @@
+import type { Participant } from "@felt/shared";
 import type React from "react";
 import { useState } from "react";
 import { useGameStore } from "../../store/game-store";
@@ -35,7 +36,7 @@ export const HostPanelModal: React.FC = () => {
     adjustChips(selectedTarget, adjustOp, adjustAmount);
   };
 
-  const lowStackPlayers = participants.filter((p) => {
+  const lowStackPlayers = participants.filter((p: Participant) => {
     const stack = stacks[p.id] ?? 0;
     return stack < config.minBet;
   });
@@ -104,7 +105,7 @@ export const HostPanelModal: React.FC = () => {
               <h3 className="font-bold text-amber-300 uppercase text-[11px] tracking-wider">
                 Low Chips / Rebuy Approval
               </h3>
-              {lowStackPlayers.map((p) => (
+              {lowStackPlayers.map((p: Participant) => (
                 <div
                   key={`rebuy-alert-${p.id}`}
                   className="flex items-center justify-between py-1.5 px-2.5 rounded bg-black/40 border border-amber-500/30"
@@ -112,7 +113,7 @@ export const HostPanelModal: React.FC = () => {
                   <div>
                     <span className="font-bold text-white">{p.displayName}</span>
                     <span className="text-[10px] text-amber-400 ml-2 font-mono">
-                      Stack: {stacks[p.id] ?? 0}
+                      Stack: ₹{stacks[p.id] ?? 0}
                     </span>
                   </div>
                   <button
@@ -120,7 +121,7 @@ export const HostPanelModal: React.FC = () => {
                     onClick={() => hostApproveRebuy(p.id)}
                     className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-[11px] shadow transition-transform active:scale-95"
                   >
-                    Grant Rebuy (+{config.startingStack})
+                    Grant Rebuy (+₹{config.startingStack})
                   </button>
                 </div>
               ))}
@@ -133,7 +134,7 @@ export const HostPanelModal: React.FC = () => {
               Player Roster & Management
             </h3>
             <div className="space-y-2">
-              {participants.map((p) => {
+              {participants.map((p: Participant) => {
                 const isDealer = dealerId === p.id;
                 const isHostPlayer = p.id === currentView.hostId;
                 const stack = stacks[p.id] ?? 0;
@@ -160,7 +161,7 @@ export const HostPanelModal: React.FC = () => {
                           Seat #{p.seat}
                         </span>
                       )}
-                      <span className="text-[10px] text-zinc-400 font-mono">({stack}c)</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">(₹{stack})</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
@@ -231,9 +232,9 @@ export const HostPanelModal: React.FC = () => {
                 className="bg-black/60 border border-emerald-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
               >
                 <option value="">Select player...</option>
-                {participants.map((p) => (
+                {participants.map((p: Participant) => (
                   <option key={p.id} value={p.id}>
-                    {p.displayName} ({stacks[p.id] ?? 0})
+                    {p.displayName} (₹{stacks[p.id] ?? 0})
                   </option>
                 ))}
               </select>

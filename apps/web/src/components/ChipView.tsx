@@ -138,7 +138,7 @@ export const ChipStack: React.FC<{ totalBet: number; isSmall?: boolean }> = ({
 
       {/* Numerical Total Tag */}
       <div className="mt-1 px-1.5 py-0.2 rounded-full bg-black/80 border border-gold-400/50 text-[10px] font-mono font-bold text-gold-300 shadow">
-        ${totalBet.toLocaleString()}
+        ₹{totalBet.toLocaleString()}
       </div>
     </div>
   );

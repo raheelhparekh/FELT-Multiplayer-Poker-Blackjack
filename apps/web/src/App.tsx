@@ -11,11 +11,18 @@ const RoomRoute: React.FC = () => {
   const navigate = useNavigate();
   const currentView = useGameStore((s) => s.currentView);
   const storeRoomCode = useGameStore((s) => s.roomCode);
+  const token = useGameStore((s) => s.token);
   const connectionStatus = useGameStore((s) => s.connectionStatus);
   const joinRoom = useGameStore((s) => s.joinRoom);
   const errorMessage = useGameStore((s) => s.errorMessage);
 
   const [attemptedJoin, setAttemptedJoin] = useState(false);
+
+  const cleanCode = (roomCode || "").toUpperCase();
+  const hasTokenForRoom = Boolean(token && storeRoomCode === cleanCode);
+  const hasSavedProfile = Boolean(
+    typeof window !== "undefined" && localStorage.getItem("felt_display_name"),
+  );
 
   useEffect(() => {
     if (!roomCode) {
@@ -23,15 +30,14 @@ const RoomRoute: React.FC = () => {
       return;
     }
 
-    const cleanCode = roomCode.toUpperCase();
-    // If not in this room and not already joined
-    if ((!currentView || storeRoomCode !== cleanCode) && !attemptedJoin) {
+    // Only auto-join if we have an existing session token for this room OR an existing profile
+    if ((!currentView || storeRoomCode !== cleanCode) && !attemptedJoin && (hasTokenForRoom || hasSavedProfile)) {
       setAttemptedJoin(true);
       joinRoom(cleanCode).catch(() => {
         // Handled via store errorMessage
       });
     }
-  }, [roomCode, currentView, storeRoomCode, attemptedJoin, joinRoom, navigate]);
+  }, [roomCode, currentView, storeRoomCode, attemptedJoin, joinRoom, navigate, cleanCode, hasTokenForRoom, hasSavedProfile]);
 
   // If left room, navigate back to landing
   useEffect(() => {
@@ -39,6 +45,11 @@ const RoomRoute: React.FC = () => {
       navigate("/");
     }
   }, [storeRoomCode, attemptedJoin, navigate]);
+
+  // If opening an invite link for the first time without a profile, prompt for name & avatar
+  if (!currentView && !hasTokenForRoom && !hasSavedProfile) {
+    return <LandingScreen initialCode={roomCode} />;
+  }
 
   if (!currentView) {
     if (errorMessage) {

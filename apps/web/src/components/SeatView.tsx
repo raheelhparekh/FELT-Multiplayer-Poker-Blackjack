@@ -1,4 +1,4 @@
-import type { ClientHand, Participant } from "@felt/shared";
+import type { ClientCard, ClientHand, Participant } from "@felt/shared";
 import { evaluateHand } from "@felt/shared";
 import type React from "react";
 import { getAvatarEmoji } from "../types/avatars";
@@ -58,7 +58,7 @@ export const SeatView: React.FC<SeatViewProps> = ({
 
   const emoji = getAvatarEmoji(participant.avatarId);
   const isConnected = participant.isConnected;
-  const isAnyHandActive = hands.some((h) => h.id === activeHandId);
+  const isAnyHandActive = hands.some((h: ClientHand) => h.id === activeHandId);
 
   return (
     <div
@@ -92,7 +92,7 @@ export const SeatView: React.FC<SeatViewProps> = ({
       {/* Stack & Seat Label */}
       <div className="flex items-center justify-between w-full text-[11px] mb-1.5 px-0.5 font-mono">
         <span className="text-emerald-500/70 font-semibold">S{seatNumber}</span>
-        <span className="font-bold text-gold-300">${stack.toLocaleString()}</span>
+        <span className="font-bold text-gold-300">₹{stack.toLocaleString()}</span>
       </div>
 
       {/* Hands Area */}
@@ -103,14 +103,14 @@ export const SeatView: React.FC<SeatViewProps> = ({
               <div className="flex flex-col items-center gap-1">
                 <ChipStack totalBet={lockedBet} isSmall={!isMySeat} />
                 <span className="text-[10px] font-bold font-mono text-gold-300 bg-black/60 px-1.5 py-0.5 rounded border border-gold-400/30">
-                  ✓ ${lockedBet.toLocaleString()}
+                  ✓ ₹{lockedBet.toLocaleString()}
                 </span>
               </div>
             ) : pendingBet > 0 ? (
               <div className="flex flex-col items-center gap-1">
                 <ChipStack totalBet={pendingBet} isSmall={!isMySeat} />
                 <span className="text-[10px] font-semibold font-mono text-emerald-300 bg-black/60 px-1.5 py-0.5 rounded border border-emerald-500/30 animate-pulse">
-                  ${pendingBet.toLocaleString()}
+                  ₹{pendingBet.toLocaleString()}
                 </span>
               </div>
             ) : (
@@ -120,11 +120,11 @@ export const SeatView: React.FC<SeatViewProps> = ({
             )}
           </div>
         ) : (
-          hands.map((hand) => {
+          hands.map((hand: ClientHand) => {
             const isActive = hand.id === activeHandId;
             const cardLimit = dealtCardsPerHand?.[hand.id] ?? hand.cards.length;
             const currentHandCards = hand.cards.slice(0, cardLimit);
-            const visibleCards = currentHandCards.flatMap((c) => ("card" in c ? [c.card] : []));
+            const visibleCards = currentHandCards.flatMap((c: ClientCard) => ("card" in c ? [c.card] : []));
             const evalResult = visibleCards.length > 0 ? evaluateHand(visibleCards) : null;
             const totalBet = hand.bet + hand.doubleBet;
 
@@ -177,7 +177,7 @@ export const SeatView: React.FC<SeatViewProps> = ({
 
                 {/* Overlapping Cards Fan */}
                 <div className="flex items-center justify-center -space-x-4 my-1 min-h-[48px]">
-                  {currentHandCards.map((c, idx) => {
+                  {currentHandCards.map((c: ClientCard, idx: number) => {
                     const cardKey =
                       "card" in c ? `${c.card.suit}-${c.card.rank}-${idx}` : `card-${idx}`;
                     // If doubled down, rotate the last card 90 degrees

@@ -1,3 +1,4 @@
+import type { ClientHand } from "@felt/shared";
 import { AnimatePresence, motion } from "framer-motion";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
@@ -62,7 +63,7 @@ export const Choreographer: React.FC<ChoreographerProps> = ({ showOutcomes = tru
     if (showOutcomes && (phase === "round_summary" || phase === "settlement") && roundNumber !== prevRound) {
       prevRoundRef.current = roundNumber;
 
-      const myHands = hands.filter((h) => h.playerId === myPlayerId);
+      const myHands = hands.filter((h: ClientHand) => h.playerId === myPlayerId);
       let hasBj = false;
       let hasWin = false;
       let hasBust = false;
@@ -71,15 +72,15 @@ export const Choreographer: React.FC<ChoreographerProps> = ({ showOutcomes = tru
         if (h.result === "blackjack") {
           hasBj = true;
           const payout = Math.floor(h.bet * 1.5);
-          spawnFloatingText(`+${payout} (BJ!)`, "blackjack");
+          spawnFloatingText(`+₹${payout} (BJ!)`, "blackjack");
         } else if (h.result === "win") {
           hasWin = true;
-          spawnFloatingText(`+${h.bet + h.doubleBet}`, "win");
+          spawnFloatingText(`+₹${h.bet + h.doubleBet}`, "win");
         } else if (h.result === "bust") {
           hasBust = true;
           spawnFloatingText("BUST", "loss");
         } else if (h.result === "loss") {
-          spawnFloatingText(`-${h.bet + h.doubleBet}`, "loss");
+          spawnFloatingText(`-₹${h.bet + h.doubleBet}`, "loss");
         } else if (h.result === "push") {
           spawnFloatingText("PUSH", "push");
         }

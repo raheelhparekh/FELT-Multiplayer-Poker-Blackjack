@@ -89,6 +89,23 @@ const STORAGE_KEYS = {
   ROOM: "felt_room_code",
 };
 
+const getInitialStoredState = () => {
+  if (typeof window === "undefined") {
+    return {
+      displayName: "Player",
+      avatarId: "lion",
+      token: null,
+      roomCode: null,
+    };
+  }
+  return {
+    displayName: localStorage.getItem(STORAGE_KEYS.NAME) || "Player",
+    avatarId: localStorage.getItem(STORAGE_KEYS.AVATAR) || "lion",
+    token: localStorage.getItem(STORAGE_KEYS.TOKEN),
+    roomCode: localStorage.getItem(STORAGE_KEYS.ROOM),
+  };
+};
+
 export const useGameStore = create<GameStoreState>((set, get) => {
   let socketInstance: Socket | null = null;
 
@@ -102,9 +119,9 @@ export const useGameStore = create<GameStoreState>((set, get) => {
 
     socket.on("connect", () => {
       set({ connectionStatus: "connected" });
-      // If we have saved token and room code, attempt auto-reconnect
-      const { token, roomCode, displayName, avatarId } = get();
-      if (token && roomCode) {
+      // Only auto-reconnect if already in an active room session and connection was dropped
+      const { token, roomCode, displayName, avatarId, currentView } = get();
+      if (currentView && token && roomCode) {
         socket.emit(
           "room:join",
           { code: roomCode, displayName, avatarId, token },
@@ -179,15 +196,17 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     return socket;
   };
 
+  const initialStored = getInitialStoredState();
+
   return {
     socket: null,
     connectionStatus: "disconnected",
     currentView: null,
-    roomCode: null,
+    roomCode: initialStored.roomCode,
     myPlayerId: null,
-    token: null,
-    displayName: "Player",
-    avatarId: "lion",
+    token: initialStored.token,
+    displayName: initialStored.displayName,
+    avatarId: initialStored.avatarId,
     chatLog: [],
     activityLog: [],
     unreadChatCount: 0,
@@ -196,16 +215,12 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     selectedChip: 100,
 
     init: () => {
-      const storedName = localStorage.getItem(STORAGE_KEYS.NAME) || "Player";
-      const storedAvatar = localStorage.getItem(STORAGE_KEYS.AVATAR) || "lion";
-      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      const storedRoom = localStorage.getItem(STORAGE_KEYS.ROOM);
-
+      const stored = getInitialStoredState();
       set({
-        displayName: storedName,
-        avatarId: storedAvatar,
-        token: storedToken,
-        roomCode: storedRoom,
+        displayName: stored.displayName,
+        avatarId: stored.avatarId,
+        token: stored.token,
+        roomCode: stored.roomCode,
       });
 
       ensureSocket();
@@ -265,8 +280,11 @@ export const useGameStore = create<GameStoreState>((set, get) => {
 
     joinRoom: async (code: string, password?: string) => {
       const socket = ensureSocket();
-      const { displayName, avatarId, token } = get();
+      const { displayName, avatarId, token, roomCode: storedRoom } = get();
       const cleanCode = code.trim().toUpperCase();
+
+      // Only pass token if it belongs to this room
+      const activeToken = storedRoom === cleanCode && token ? token : undefined;
 
       return new Promise<void>((resolve, reject) => {
         socket.emit(
@@ -275,7 +293,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
             code: cleanCode,
             displayName,
             avatarId,
-            token: token || undefined,
+            token: activeToken,
             password: password || undefined,
           },
           (res: {

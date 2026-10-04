@@ -1,4 +1,4 @@
-import type { ClientGameView } from "@felt/shared";
+import type { ClientGameView, ClientHand, Participant } from "@felt/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { soundEngine } from "../audio/sound-engine";
@@ -65,10 +65,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
   if (!myPlayerId) return null;
 
-  const myParticipant = view.participants.find((p) => p.id === myPlayerId);
+  const myParticipant = view.participants.find((p: Participant) => p.id === myPlayerId);
   const isSeated = myParticipant?.seat !== null;
-  const myHands = view.hands.filter((h) => h.playerId === myPlayerId);
-  const activeHand = view.hands.find((h) => h.id === view.activeHandId);
+  const myHands = view.hands.filter((h: ClientHand) => h.playerId === myPlayerId);
+  const activeHand = view.hands.find((h: ClientHand) => h.id === view.activeHandId);
   const isMyTurn = activeHand && activeHand.playerId === myPlayerId;
 
   const handleHit = (handId: string) => {
@@ -118,7 +118,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       return (
         <div className="w-full max-w-md mx-auto p-3 bg-black/80 rounded-2xl border border-gold-400/40 text-center shadow-lg">
           <span className="text-xs text-gold-300 font-bold block mb-0.5">
-            ✓ Bet of ${lockedAmount} is locked in!
+            ✓ Bet of ₹{lockedAmount} is locked in!
           </span>
           <span className="text-[11px] text-emerald-400/60 font-mono">
             Waiting for cards to be dealt... {timeLeft !== null && `(${timeLeft}s)`}
@@ -184,7 +184,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               onClick={() => handleInsurance(hand.id, true)}
               className="px-6 py-2.5 rounded-xl bg-gold-400 hover:bg-gold-300 font-black text-xs text-black shadow-lg transition-transform active:scale-95"
             >
-              Take Insurance (${Math.floor(hand.bet / 2)})
+              Take Insurance (₹{Math.floor(hand.bet / 2)})
             </button>
             <button
               type="button"
@@ -208,7 +208,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   // 3. Player Turns Phase
   if (view.phase === "player_turns") {
     if (!isMyTurn || !activeHand) {
-      const activePlayer = view.participants.find((p) => p.id === activeHand?.playerId);
+      const activePlayer = view.participants.find((p: Participant) => p.id === activeHand?.playerId);
       const activeName = activePlayer ? activePlayer.displayName : "player";
 
       return (
@@ -245,7 +245,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               </span>
             )}
           </div>
-          <span className="text-emerald-400/80 font-mono">Bet: ${activeHand.bet}</span>
+          <span className="text-emerald-400/80 font-mono">Bet: ₹{activeHand.bet}</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
@@ -271,7 +271,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             onClick={() => handleDouble(activeHand.id)}
             className="py-3 rounded-2xl bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-xs sm:text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-amber-400/40"
           >
-            Double (${activeHand.bet})
+            Double (₹{activeHand.bet})
           </button>
 
           <button
@@ -280,7 +280,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             onClick={() => handleSplit(activeHand.id)}
             className="py-3 rounded-2xl bg-blue-700 hover:bg-blue-600 disabled:opacity-30 text-xs sm:text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-blue-500/40"
           >
-            Split (${activeHand.bet})
+            Split (₹{activeHand.bet})
           </button>
         </div>
       </div>

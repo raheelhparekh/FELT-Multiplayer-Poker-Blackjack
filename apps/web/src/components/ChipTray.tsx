@@ -64,10 +64,10 @@ export const ChipTray: React.FC<ChipTrayProps> = ({
       {/* Bet Status Bar */}
       <div className="flex items-center justify-between w-full px-2 text-xs">
         <span className="text-emerald-400/80 font-mono">
-          Min: ${minBet} / Max: ${maxBet}
+          Min: ₹{minBet} / Max: ₹{maxBet}
         </span>
         <span className="font-bold text-sm text-gold-300 font-mono tracking-wide">
-          Bet: ${pendingBet.toLocaleString()}
+          Bet: ₹{pendingBet.toLocaleString()}
         </span>
       </div>
 

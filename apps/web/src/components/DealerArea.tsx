@@ -48,9 +48,9 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
     : (dealerHand?.cards ?? []);
 
   // Calculate visible total directly from active cards displayed on table
-  const visibleCards = activeCards.flatMap((c) => ("card" in c ? [c.card] : []));
+  const visibleCards = activeCards.flatMap((c: ClientCard) => ("card" in c ? [c.card] : []));
   const evalResult = visibleCards.length > 0 ? evaluateHand(visibleCards) : null;
-  const hasHiddenCard = activeCards.some((c) => "hidden" in c && c.hidden);
+  const hasHiddenCard = activeCards.some((c: ClientCard) => "hidden" in c && c.hidden);
   const isRevealed = !hasHiddenCard && activeCards.length >= 2;
 
   return (
@@ -67,7 +67,7 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
         <div className="text-right">
           <span className="text-[10px] text-felt-light/60 block">Bank</span>
           <span className="text-sm font-bold text-gold-300 font-mono">
-            ${dealerBank.toLocaleString()}
+            ₹{dealerBank.toLocaleString()}
           </span>
         </div>
       </div>
@@ -77,7 +77,7 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
         {activeCards.length > 0 ? (
           <>
             <div className="flex items-center justify-center -space-x-5">
-              {activeCards.map((slot, idx) => {
+              {activeCards.map((slot: ClientCard, idx: number) => {
                 const key =
                   "card" in slot ? `${slot.card.suit}-${slot.card.rank}-${idx}` : `hidden-${idx}`;
                 const isFlipping = isFlippingHole && idx === 1;
