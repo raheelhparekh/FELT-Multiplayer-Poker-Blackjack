@@ -8,7 +8,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@felt/shared": ["../../packages/shared/src/index.ts", "../../packages/shared/dist/index.d.ts"]
+      "@felt/shared": ["../../packages/shared/dist/index.d.ts"]
     }
   },
   "references": [{ "path": "../../packages/shared" }],
