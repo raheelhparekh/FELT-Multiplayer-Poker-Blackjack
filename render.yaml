@@ -1,0 +1,45 @@
+services:
+  # ── Web Service ───────────────────────────────────────────────────────────────
+  - type: web
+    name: felt-blackjack
+    runtime: docker
+    # Render builds from the Dockerfile at the repo root
+    dockerfilePath: ./Dockerfile
+    # Render exposes this port; the Dockerfile sets PORT=8080 internally
+    plan: free          # upgrade to "starter" or higher for always-on
+    healthCheckPath: /healthz
+    autoDeploy: true    # redeploy automatically on every git push to main
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: STATIC_DIR
+        value: /app/apps/web/dist
+
+      # Injected automatically from the database below
+      - key: DATABASE_URL
+        fromDatabase:
+          name: felt-postgres
+          property: connectionString
+
+      # Render will auto-generate a secure random value
+      - key: JWT_SECRET
+        generateValue: true
+
+      # After deploy, replace with your actual .onrender.com URL
+      - key: ALLOWED_ORIGINS
+        value: https://felt-blackjack.onrender.com
+
+      - key: PACING_ENABLED
+        value: "true"
+
+  # ── Postgres Database ─────────────────────────────────────────────────────────
+databases:
+  - name: felt-postgres
+    plan: free          # 90-day free tier on Render; upgrade for persistence
+    databaseName: felt
+    user: felt
