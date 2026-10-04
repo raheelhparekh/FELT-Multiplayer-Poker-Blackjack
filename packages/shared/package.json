@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build --force",
     "dev": "tsc --build --watch",
     "test": "vitest run",
     "test:watch": "vitest",

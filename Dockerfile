@@ -19,7 +19,7 @@ COPY packages ./packages
 COPY apps ./apps
 COPY tools ./tools
 
-RUN pnpm build
+RUN find . -name "*.tsbuildinfo" -delete && pnpm build
 
 # ── Stage 3: Production Runner ─────────────────────────────
 FROM base AS runner
