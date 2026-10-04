@@ -42,10 +42,17 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
   const emoji = dealerParticipant ? getAvatarEmoji(dealerParticipant.avatarId) : "🏦";
   const name = dealerParticipant ? dealerParticipant.displayName : "Dealer";
 
-  // Use suspense displayed cards if provided, otherwise fallback to dealerHand.cards
-  const activeCards = displayedCards && displayedCards.length > 0
-    ? displayedCards
-    : (dealerHand?.cards ?? []);
+  // Determine dealer cards: if dealer has drawn beyond 2 cards or server revealed the hole card,
+  // ensure ALL cards from dealerHand are rendered and evaluated!
+  const serverCards = dealerHand?.cards ?? [];
+  const holeCard = serverCards[1];
+  const isServerHoleRevealed =
+    serverCards.length >= 2 && Boolean(holeCard && !("hidden" in holeCard && holeCard.hidden));
+
+  const activeCards =
+    serverCards.length > 2 || isServerHoleRevealed
+      ? (displayedCards && displayedCards.length >= serverCards.length ? displayedCards : serverCards)
+      : (displayedCards && displayedCards.length > 0 ? displayedCards : serverCards);
 
   // Calculate visible total directly from active cards displayed on table
   const visibleCards = activeCards.flatMap((c: ClientCard) => ("card" in c ? [c.card] : []));
@@ -155,20 +162,35 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
 
           {phase === "dealer_turn" && dealerDrawMode === "manual" && (
             <>
-              <button
-                type="button"
-                onClick={onReveal}
-                className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95"
-              >
-                Reveal Hole Card
-              </button>
-              <button
-                type="button"
-                onClick={onDraw}
-                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95"
-              >
-                Draw Card
-              </button>
+              {hasHiddenCard ? (
+                <button
+                  type="button"
+                  onClick={onReveal}
+                  className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95"
+                >
+                  Reveal Hole Card
+                </button>
+              ) : evalResult && evalResult.total < 17 ? (
+                <button
+                  type="button"
+                  onClick={onDraw}
+                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
+                >
+                  <span>Draw Card</span>
+                  <span className="text-[10px] opacity-80 font-mono">({evalResult.total} &lt; 17)</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onDraw}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
+                >
+                  <span>Stand / Settle →</span>
+                  {evalResult && (
+                    <span className="text-[10px] opacity-80 font-mono">({evalResult.total})</span>
+                  )}
+                </button>
+              )}
             </>
           )}
 

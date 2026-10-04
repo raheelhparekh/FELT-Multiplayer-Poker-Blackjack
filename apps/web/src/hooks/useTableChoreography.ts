@@ -184,6 +184,19 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
 
     // ─── 4. Dealer Turn & Settlement Suspense ───────────────────────────────────
     if (phase === "dealer_turn" || phase === "settlement" || phase === "round_summary") {
+      // Always sync player card counts so hit, doubled, and split cards are never sliced off
+      setDealtCardsPerHand((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const h of hands) {
+          if ((next[h.id] ?? 0) < h.cards.length) {
+            next[h.id] = h.cards.length;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+
       const fullDealerCards = dealerHand?.cards ?? [];
       const holeSlot = fullDealerCards[1];
       // Server has revealed the hole card when slot[1] contains a real card identity
@@ -191,6 +204,21 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
         fullDealerCards.length >= 2 && Boolean(holeSlot && "card" in holeSlot);
 
       if (!isServerHoleRevealed) return;
+
+      // Manual dealer draw mode: Dealer controls card-by-card drawing
+      if (currentView.config.dealerDrawMode === "manual") {
+        clearTimers();
+        setIsHoleCardRevealed(true);
+        setIsFlippingHole(false);
+        setDealerCardCount(fullDealerCards.length);
+        if (phase === "dealer_turn") {
+          setShowOutcomes(false);
+          setStatusMessage(null);
+        } else {
+          setShowOutcomes(true);
+        }
+        return;
+      }
 
       // Instant mode
       if (animationSpeed === 0) {
@@ -293,19 +321,25 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
   const displayedDealerCards: ClientCard[] = (() => {
     if (!currentView?.dealerHand) return [];
     const cards = currentView.dealerHand.cards;
-    if (cards.length === 0 || dealerCardCount === 0) return [];
+    if (cards.length === 0) return [];
 
-    if (dealerCardCount === 1) {
+    if (dealerCardCount === 1 && cards.length === 1) {
       return [cards[0]!];
     }
 
-    if (!isHoleCardRevealed) {
-      // Show upcard + face-down hole card
-      return [cards[0]!, { hidden: true } satisfies ClientCard];
+    const holeSlot = cards[1];
+    const isHoleHiddenByServer = Boolean(
+      holeSlot && "hidden" in holeSlot && holeSlot.hidden,
+    );
+
+    // If dealer has > 2 cards or server revealed the hole card, always make all cards visible
+    if (cards.length > 2 || !isHoleHiddenByServer || isHoleCardRevealed) {
+      const count = Math.max(dealerCardCount, cards.length > 2 ? cards.length : 2);
+      return cards.slice(0, count);
     }
 
-    // Hole is face-up — slice to exactly how many cards should be visible
-    return cards.slice(0, dealerCardCount);
+    // Show upcard + face-down hole card
+    return [cards[0]!, { hidden: true } satisfies ClientCard];
   })();
 
   return {

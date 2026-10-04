@@ -122,8 +122,15 @@ export const SeatView: React.FC<SeatViewProps> = ({
         ) : (
           hands.map((hand: ClientHand) => {
             const isActive = hand.id === activeHandId;
-            const cardLimit = dealtCardsPerHand?.[hand.id] ?? hand.cards.length;
-            const currentHandCards = hand.cards.slice(0, cardLimit);
+            // Only limit cards during initial deal animation when hand has 2 cards and deal animation is in progress
+            const isInitialDealing =
+              dealtCardsPerHand !== undefined &&
+              hand.id in dealtCardsPerHand &&
+              (dealtCardsPerHand[hand.id] ?? 0) < 2 &&
+              hand.cards.length <= 2;
+            const currentHandCards = isInitialDealing
+              ? hand.cards.slice(0, dealtCardsPerHand[hand.id])
+              : hand.cards;
             const visibleCards = currentHandCards.flatMap((c: ClientCard) => ("card" in c ? [c.card] : []));
             const evalResult = visibleCards.length > 0 ? evaluateHand(visibleCards) : null;
             const totalBet = hand.bet + hand.doubleBet;
