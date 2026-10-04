@@ -135,6 +135,8 @@ export class Room {
 
     const isFirstParticipant = this.participants.size === 0;
     const isHost = isFirstParticipant;
+    // First participant is automatically the host AND the dealer
+    const isAutoDealer = isFirstParticipant;
     const role: Role = isHost ? "host" : "spectator";
 
     const participant: Participant = {
@@ -152,6 +154,12 @@ export class Room {
     if (isHost) {
       this.hostId = playerId;
       this.state.hostId = playerId;
+    }
+
+    // Auto-assign the room creator as dealer so they can start sessions immediately
+    if (isAutoDealer) {
+      this.dealerId = playerId;
+      this.state.dealerId = playerId;
     }
 
     this.participants.set(playerId, participant);
