@@ -315,7 +315,7 @@ export class Room {
     if (!playerId) return;
 
     const participant = this.participants.get(playerId);
-    if (participant?.seat !== null) {
+    if (participant && participant.seat !== null) {
       const seat = participant.seat;
       participant.seat = null;
       const seatedPlayers = new Map(this.state.seatedPlayers);
