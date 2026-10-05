@@ -42,17 +42,10 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
   const emoji = dealerParticipant ? getAvatarEmoji(dealerParticipant.avatarId) : "🏦";
   const name = dealerParticipant ? dealerParticipant.displayName : "Dealer";
 
-  // Determine dealer cards: if dealer has drawn beyond 2 cards or server revealed the hole card,
-  // ensure ALL cards from dealerHand are rendered and evaluated!
+  // Determine dealer cards: use displayedCards from table choreography if provided,
+  // accurately reflecting the one-by-one card opening suspense.
   const serverCards = dealerHand?.cards ?? [];
-  const holeCard = serverCards[1];
-  const isServerHoleRevealed =
-    serverCards.length >= 2 && Boolean(holeCard && !("hidden" in holeCard && holeCard.hidden));
-
-  const activeCards =
-    serverCards.length > 2 || isServerHoleRevealed
-      ? (displayedCards && displayedCards.length >= serverCards.length ? displayedCards : serverCards)
-      : (displayedCards && displayedCards.length > 0 ? displayedCards : serverCards);
+  const activeCards = displayedCards ?? serverCards;
 
   // Calculate visible total directly from active cards displayed on table
   const visibleCards = activeCards.flatMap((c: ClientCard) => ("card" in c ? [c.card] : []));

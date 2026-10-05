@@ -34,7 +34,7 @@ export type GameAction =
   | { type: "host:updateConfig"; config: Partial<import("../types/config.js").RoomConfig> }
 
   // Rebuy
-  | { type: "rebuy:request"; playerId: string };
+  | { type: "rebuy:request"; playerId: string; amount?: number | undefined };
 
 // ─── Engine events emitted alongside state changes ─────────────────────────
 

@@ -14,6 +14,7 @@ export const RoomCreateSchema = BaseIntent.extend({
   type: z.literal("room:create"),
   displayName: z.string().min(1).max(30),
   avatarId: z.string(),
+  buyIn: z.number().int().positive().optional(),
   config: PartialRoomConfigSchema.optional(),
 });
 
@@ -22,6 +23,7 @@ export const RoomJoinSchema = BaseIntent.extend({
   code: z.string().length(6),
   displayName: z.string().min(1).max(30),
   avatarId: z.string(),
+  buyIn: z.number().int().positive().optional(),
   token: z.string().optional(),
   password: z.string().optional(),
 });
@@ -124,7 +126,10 @@ export const SeatSitSchema = BaseIntent.extend({
   seat: z.number().int().min(1).max(7),
 });
 export const SeatStandSchema = BaseIntent.extend({ type: z.literal("seat:stand") });
-export const RebuyRequestSchema = BaseIntent.extend({ type: z.literal("rebuy:request") });
+export const RebuyRequestSchema = BaseIntent.extend({
+  type: z.literal("rebuy:request"),
+  amount: z.number().int().positive().optional(),
+});
 
 export const ClientIntentSchemas = {
   "room:create": RoomCreateSchema,

@@ -10,7 +10,7 @@
  */
 
 import type { RoomConfig } from "../types/config.js";
-import type { ClientCard, GamePhase, Hand, Participant } from "../types/index.js";
+import type { ClientCard, GamePhase, Hand, Participant, PlayerTransaction } from "../types/index.js";
 import type { GameState } from "./state.js";
 
 // ─── Public client-facing view types ─────────────────────────────────────────
@@ -48,6 +48,8 @@ export interface ClientGameView {
   /** Per-player stacks (all players can see everyone's stack). */
   stacks: Record<string, number>;
   totalBuyIns: Record<string, number>;
+  initialBuyIns?: Record<string, number> | undefined;
+  rebuys?: Record<string, number> | undefined;
   dealerBank: number;
   dealerTotalBuyIn: number;
   stackHistory: Array<Record<string, number>>;
@@ -57,6 +59,8 @@ export interface ClientGameView {
   isPaused?: boolean | undefined;
   pendingBets?: Record<string, number> | undefined;
   lockedBets?: Record<string, number> | undefined;
+  dealerHoleCardRevealed?: boolean | undefined;
+  transactions?: PlayerTransaction[] | undefined;
 }
 
 // ─── Main filter ─────────────────────────────────────────────────────────────
@@ -67,7 +71,7 @@ export interface ClientGameView {
  * @param viewerId - The socket/player ID requesting the view.
  */
 export function viewFor(state: GameState, _viewerId: string): ClientGameView {
-  const dealerRevealed = isDealerRevealed(state.phase);
+  const dealerRevealed = isDealerRevealed(state);
 
   return {
     roomCode: state.roomCode,
@@ -84,6 +88,8 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
     seq: state.seq,
     stacks: Object.fromEntries(state.stacks),
     totalBuyIns: Object.fromEntries(state.totalBuyIns),
+    initialBuyIns: state.initialBuyIns ? Object.fromEntries(state.initialBuyIns) : undefined,
+    rebuys: state.rebuys ? Object.fromEntries(state.rebuys) : undefined,
     dealerBank: state.dealerBank,
     dealerTotalBuyIn: state.dealerTotalBuyIn ?? state.config.dealerStartingBank,
     stackHistory: state.stackHistory,
@@ -93,6 +99,7 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
     isPaused: state.isPaused,
     pendingBets: Object.fromEntries(state.pendingBets),
     lockedBets: Object.fromEntries(state.lockedBets),
+    dealerHoleCardRevealed: Boolean(state.dealerHoleCardRevealed),
     // NOTE: dealerHasBlackjack is deliberately NOT included.
     // NOTE: shoe and pending card identities are deliberately NOT included.
   };
@@ -102,10 +109,18 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
 
 /**
  * The hole card is only visible after the dealer_turn reveal.
- * During settlement and round_summary it remains visible.
+ * In casino rules: when all players bust, the dealer card is NEVER opened.
  */
-function isDealerRevealed(phase: GamePhase): boolean {
+function isDealerRevealedPhase(phase: GamePhase): boolean {
   return phase === "dealer_turn" || phase === "settlement" || phase === "round_summary";
+}
+
+function isDealerRevealed(state: GameState): boolean {
+  const allBusted = (state.hands?.length ?? 0) > 0 && state.hands!.every((h) => h.result === "bust");
+  if (allBusted) {
+    return false;
+  }
+  return isDealerRevealedPhase(state.phase);
 }
 
 function filterHand(hand: Hand, _dealerRevealed: boolean): ClientHand {
@@ -189,7 +204,7 @@ export function scanForLeaks(view: ClientGameView, fullState?: GameState): strin
   }
 
   // Check hole card: during pre-reveal phases, index 1 of dealer hand must be hidden
-  if (view.dealerHand && !isDealerRevealed(view.phase)) {
+  if (view.dealerHand && !isDealerRevealedPhase(view.phase)) {
     const holeSlot = view.dealerHand.cards[1];
     if (holeSlot && !holeSlot.hidden) {
       violations.push("LEAK: dealer hole card is not hidden before reveal");

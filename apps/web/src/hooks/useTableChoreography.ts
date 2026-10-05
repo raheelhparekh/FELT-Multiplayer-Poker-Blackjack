@@ -39,6 +39,8 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
 
   const hasDealtThisRoundRef = useRef<number>(-1);
   const hasSuspensedThisRoundRef = useRef<number>(-1);
+  const isDealingRef = useRef<boolean>(false);
+  const isSuspensingRef = useRef<boolean>(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimers = () => {
@@ -53,6 +55,8 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
   useEffect(() => {
     if (!currentView) {
       clearTimers();
+      isDealingRef.current = false;
+      isSuspensingRef.current = false;
       setDealtCardsPerHand({});
       setDealerCardCount(0);
       setIsHoleCardRevealed(false);
@@ -68,6 +72,8 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
     // ─── 1. Reset on Lobby or Betting Phase ─────────────────────────────────────
     if (phase === "lobby" || phase === "betting") {
       clearTimers();
+      isDealingRef.current = false;
+      isSuspensingRef.current = false;
       hasDealtThisRoundRef.current = -1;
       hasSuspensedThisRoundRef.current = -1;
       setDealtCardsPerHand({});
@@ -85,6 +91,7 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
 
     if (isNewDeal) {
       clearTimers();
+      isSuspensingRef.current = false;
       hasDealtThisRoundRef.current = roundNumber;
       hasSuspensedThisRoundRef.current = -1;
       setShowOutcomes(false);
@@ -92,6 +99,7 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
       setIsFlippingHole(false);
 
       if (animationSpeed === 0) {
+        isDealingRef.current = false;
         // Instant mode — show everything right away
         const allDealt: Record<string, number> = {};
         for (const h of hands) allDealt[h.id] = h.cards.length;
@@ -99,11 +107,12 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
         setDealerCardCount(dealerHand?.cards.length ?? 0);
         setStatusMessage(null);
       } else {
+        isDealingRef.current = true;
         // ── Casino Pass-1 & Pass-2 rhythm ──────────────────────────────────────
         // Pass 1: player1 → player2 → … → dealer up-card
         // Pass 2: player1 → player2 → … → dealer hole card (face-down)
-        // Each step: ~240ms — crisp, satisfying, no blank-table period.
-        const stepDelay = Math.round(240 / speedFactor);
+        // Each step: ~260ms — crisp, satisfying, no blank-table period.
+        const stepDelay = Math.round(260 / speedFactor);
         const sortedHands = [...hands].sort((a, b) => a.seatNumber - b.seatNumber);
 
         setStatusMessage("Dealing cards...");
@@ -148,6 +157,7 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
           setDealerCardCount(2);
           soundEngine.play("card_deal");
           setStatusMessage(null);
+          isDealingRef.current = false;
         }, curTime);
         timersRef.current.push(tDealer2);
       }
@@ -161,6 +171,10 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
       phase === "peek" ||
       phase === "player_turns"
     ) {
+      if (isDealingRef.current) {
+        return; // Don't interrupt or jump ahead of sequential initial deal!
+      }
+
       // Sync card counts as players hit / double / split (new cards appear immediately)
       setDealtCardsPerHand((prev) => {
         const next = { ...prev };
@@ -203,7 +217,12 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
       const isServerHoleRevealed =
         fullDealerCards.length >= 2 && Boolean(holeSlot && "card" in holeSlot);
 
-      if (!isServerHoleRevealed) return;
+      if (!isServerHoleRevealed) {
+        if (phase === "round_summary") {
+          setShowOutcomes(true);
+        }
+        return;
+      }
 
       // Manual dealer draw mode: Dealer controls card-by-card drawing
       if (currentView.config.dealerDrawMode === "manual") {
@@ -220,6 +239,17 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
         return;
       }
 
+      // In auto mode: during dealer_turn phase, server is pacing before dealer:reveal.
+      // Wait until round_summary arrives so we have ALL drawn dealer cards before animating.
+      if (currentView.config.dealerDrawMode === "auto" && phase === "dealer_turn") {
+        setDealerCardCount(2);
+        setIsHoleCardRevealed(false);
+        setIsFlippingHole(false);
+        setStatusMessage("Dealer's turn...");
+        setShowOutcomes(false);
+        return;
+      }
+
       // Instant mode
       if (animationSpeed === 0) {
         clearTimers();
@@ -232,6 +262,10 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
         return;
       }
 
+      if (isSuspensingRef.current) {
+        return; // Don't interrupt or jump ahead while dealer cards are opening one by one!
+      }
+
       // Already ran the suspense animation for this round — keep final state
       if (hasSuspensedThisRoundRef.current === roundNumber) {
         setDealerCardCount(fullDealerCards.length);
@@ -242,6 +276,7 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
 
       // ── BEGIN DEALER SUSPENSE ────────────────────────────────────────────────
       clearTimers();
+      isSuspensingRef.current = true;
       hasSuspensedThisRoundRef.current = roundNumber;
       setShowOutcomes(false);
 
@@ -312,6 +347,7 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
       const tComplete = setTimeout(() => {
         setStatusMessage(null);
         setShowOutcomes(true);
+        isSuspensingRef.current = false;
       }, cumDelay);
       timersRef.current.push(tComplete);
     }
@@ -323,7 +359,16 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
     const cards = currentView.dealerHand.cards;
     if (cards.length === 0) return [];
 
-    if (dealerCardCount === 1 && cards.length === 1) {
+    if (dealerCardCount === 0) {
+      return [];
+    }
+
+    // Once round summary outcomes are revealed, ensure the full final dealer hand is displayed
+    if (showOutcomes && currentView.phase === "round_summary") {
+      return cards;
+    }
+
+    if (dealerCardCount === 1) {
       return [cards[0]!];
     }
 
@@ -332,9 +377,9 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
       holeSlot && "hidden" in holeSlot && holeSlot.hidden,
     );
 
-    // If dealer has > 2 cards or server revealed the hole card, always make all cards visible
-    if (cards.length > 2 || !isHoleHiddenByServer || isHoleCardRevealed) {
-      const count = Math.max(dealerCardCount, cards.length > 2 ? cards.length : 2);
+    // If hole card is revealed (either by choreography animation or by server)
+    if (!isHoleHiddenByServer || isHoleCardRevealed) {
+      const count = Math.min(dealerCardCount, cards.length);
       return cards.slice(0, count);
     }
 

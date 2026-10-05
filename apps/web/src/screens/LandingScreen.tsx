@@ -28,6 +28,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
   const [name, setName] = useState(displayName || "");
   const [selectedAvatar, setSelectedAvatar] = useState(avatarId || "lion");
   const [joinCode, setJoinCode] = useState(initialCode.toUpperCase());
+  const [buyIn, setBuyIn] = useState<number>(1000);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -65,14 +66,18 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
     clearError();
     setIsSubmitting(true);
     try {
-      const code = await createRoom(undefined, {
-        decks,
-        blackjackPayout,
-        dealerHitsSoft17,
-        doubleRestriction,
-        minBet,
-        maxBet,
-      });
+      const code = await createRoom(
+        undefined,
+        {
+          decks,
+          blackjackPayout,
+          dealerHitsSoft17,
+          doubleRestriction,
+          minBet,
+          maxBet,
+        },
+        buyIn,
+      );
       navigate(`/r/${code}`);
     } catch {
       // Error handled by store
@@ -90,7 +95,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
     clearError();
     setIsSubmitting(true);
     try {
-      await joinRoom(finalCode);
+      await joinRoom(finalCode, undefined, buyIn);
       navigate(`/r/${finalCode}`);
     } catch {
       // Error handled by store
@@ -173,6 +178,44 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                 </button>
               );
             })}
+          </div>
+
+          {/* Buy-In Chips */}
+          <div className="pt-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                Chips To Enter With
+              </span>
+              <span className="text-xs font-mono font-bold text-gold-400">
+                ₹{buyIn.toLocaleString()}
+              </span>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5 mb-2">
+              {[500, 1000, 2500, 5000].map((preset) => (
+                <button
+                  type="button"
+                  key={preset}
+                  onClick={() => setBuyIn(preset)}
+                  className={`py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                    buyIn === preset
+                      ? "bg-gold-400 text-black shadow-sm"
+                      : "bg-emerald-950/80 border border-emerald-800/40 text-emerald-200 hover:bg-emerald-900/40"
+                  }`}
+                >
+                  ₹{preset.toLocaleString()}
+                </button>
+              ))}
+            </div>
+            <input
+              type="number"
+              min={100}
+              max={100000}
+              step={100}
+              value={buyIn}
+              onChange={(e) => setBuyIn(Math.max(100, Number.parseInt(e.target.value, 10) || 100))}
+              className="w-full bg-black/50 border border-emerald-700/60 focus:border-gold-400 rounded-xl px-3.5 py-2 text-sm font-mono font-semibold text-white placeholder-emerald-600 focus:outline-none transition-colors"
+              placeholder="Custom chip amount"
+            />
           </div>
         </div>
 

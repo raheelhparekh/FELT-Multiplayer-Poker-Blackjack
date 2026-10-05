@@ -3,6 +3,7 @@ import { evaluateHand } from "@felt/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { soundEngine } from "../audio/sound-engine";
+import { useGameStore } from "../store/game-store";
 import { ChipTray } from "./ChipTray";
 
 interface ActionBarProps {
@@ -133,6 +134,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
     return (
       <div className="w-full max-w-lg mx-auto flex flex-col items-center gap-1">
+        {myStack < view.config.minBet && (
+          <button
+            type="button"
+            onClick={() => useGameStore.getState().openModal("rebuy")}
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-gold-400 hover:from-amber-400 hover:to-gold-300 text-black font-extrabold text-xs shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2 mb-1"
+          >
+            <span>🪙</span>
+            <span>Out of Chips! Request More from Dealer</span>
+          </button>
+        )}
         <ChipTray
           denominations={view.config.chipDenominations}
           selectedChip={selectedChip}

@@ -7,9 +7,11 @@ import type {
   GamePhase,
   Hand,
   Participant,
+  PlayerTransaction,
   Role,
   RoomConfig,
   SeatNumber,
+  TableNotification,
 } from "@felt/shared";
 import {
   CHAT,
@@ -17,6 +19,7 @@ import {
   PartialRoomConfigSchema,
   ROOM,
   TIMING,
+  bjWinAmount,
   createInitialState,
   defaultRoomConfig,
   reduce,
@@ -44,6 +47,7 @@ export interface JoinParams {
   token?: string | undefined;
   password?: string | undefined;
   userId?: string | undefined;
+  buyIn?: number | undefined;
 }
 
 export class Room {
@@ -57,6 +61,7 @@ export class Room {
   public sessionStartedAt = Date.now();
   public roundCount = 0;
   public participants = new Map<string, Participant>();
+  public transactions: PlayerTransaction[] = [];
   private sockets = new Map<string, Socket>(); // playerId → socket
   private socketToPlayer = new Map<string, string>(); // socket.id → playerId
   private playerTokens = new Map<string, string>(); // playerId → token
@@ -118,6 +123,29 @@ export class Room {
       }
     }
 
+    // Check if an existing participant with same displayName or userId left and is rejoining
+    const trimmedName = params.displayName.trim().toLowerCase();
+    const existingByName = Array.from(this.participants.values()).find(
+      (p) =>
+        !p.isConnected &&
+        (params.userId ? p.userId === params.userId : p.displayName.trim().toLowerCase() === trimmedName),
+    );
+    if (existingByName) {
+      if (this.bannedPlayerIds.has(existingByName.id)) {
+        throw new EngineError("ILLEGAL_ACTION", "You have been banned from this room");
+      }
+      const existingToken =
+        this.playerTokens.get(existingByName.id) ??
+        createGuestToken({
+          playerId: existingByName.id,
+          roomCode: this.roomCode,
+          displayName: existingByName.displayName,
+          avatarId: params.avatarId,
+        });
+      existingByName.avatarId = params.avatarId;
+      return this.reconnectParticipant(existingByName, socket, existingToken);
+    }
+
     // New participant
     const connectedSpectators = Array.from(this.participants.values()).filter(
       (p) => p.role === "spectator" && p.isConnected,
@@ -169,16 +197,41 @@ export class Room {
     this.socketToPlayer.set(socket.id, playerId);
     this.playerTokens.set(playerId, token);
 
-    // Sync participant to engine state bankrolls
+    // Sync participant to engine state bankrolls (with custom buyIn if supplied)
+    const initialStack =
+      params.buyIn && params.buyIn > 0 ? params.buyIn : this.config.startingStack;
     const stacks = new Map(this.state.stacks);
     const totalBuyIns = new Map(this.state.totalBuyIns);
-    if (!stacks.has(playerId)) {
-      stacks.set(playerId, this.config.startingStack);
-      totalBuyIns.set(playerId, this.config.startingStack);
-    }
+    const initialBuyIns = new Map(this.state.initialBuyIns);
+    const rebuys = new Map(this.state.rebuys);
+
+    stacks.set(playerId, initialStack);
+    totalBuyIns.set(playerId, initialStack);
+    initialBuyIns.set(playerId, initialStack);
+    rebuys.set(playerId, 0);
+
     const stateParticipants = new Map(this.state.participants);
     stateParticipants.set(playerId, participant);
-    this.state = { ...this.state, participants: stateParticipants, stacks, totalBuyIns };
+    this.state = {
+      ...this.state,
+      participants: stateParticipants,
+      stacks,
+      totalBuyIns,
+      initialBuyIns,
+      rebuys,
+    };
+
+    this.addTransaction({
+      id: randomUUID(),
+      roundNumber: this.roundCount,
+      playerId,
+      displayName: participant.displayName,
+      type: "buy_in",
+      amount: initialStack,
+      balanceAfter: initialStack,
+      details: "Entered table",
+      timestamp: Date.now(),
+    });
 
     this.cancelEmptyRoomTimer();
 
@@ -187,6 +240,13 @@ export class Room {
     this.broadcastSnapshot();
 
     return { participant, token, isReconnect: false };
+  }
+
+  public addTransaction(tx: PlayerTransaction): void {
+    this.transactions.push(tx);
+    if (this.transactions.length > 500) {
+      this.transactions.shift();
+    }
   }
 
   private reconnectParticipant(
@@ -574,18 +634,48 @@ export class Room {
     });
   }
 
-  public approveRebuy(hostId: string, targetId: string): void {
-    this.assertHost(hostId);
+  public approveRebuy(approverId: string, targetId: string, amount?: number): void {
+    if (approverId !== this.hostId && approverId !== this.dealerId) {
+      throw new EngineError("NOT_HOST", "Only the host or dealer can approve chip requests");
+    }
     this.assertBetweenRounds();
+
+    const rebuyAmount = amount && amount > 0 ? amount : this.config.rebuyAmount;
 
     this.dispatchEngineAction({
       type: "rebuy:request",
       playerId: targetId,
+      amount: rebuyAmount,
     });
 
     const target = this.participants.get(targetId);
     const name = target ? target.displayName : targetId;
-    this.addActivity(`Host approved rebuy for ${name}`);
+    const newStack = this.state.stacks.get(targetId) ?? 0;
+
+    this.addTransaction({
+      id: randomUUID(),
+      roundNumber: this.roundCount,
+      playerId: targetId,
+      displayName: name,
+      type: "rebuy",
+      amount: rebuyAmount,
+      balanceAfter: newStack,
+      details: "Chips approved by dealer/host",
+      timestamp: Date.now(),
+    });
+
+    this.addActivity(`Approved ${rebuyAmount.toLocaleString()} chips for ${name}`);
+
+    const notif: TableNotification = {
+      id: randomUUID(),
+      type: "chip_approved",
+      playerId: targetId,
+      playerName: name,
+      amount: rebuyAmount,
+      message: `${name} was approved for ${rebuyAmount.toLocaleString()} chips`,
+      timestamp: Date.now(),
+    };
+    this.broadcastTableNotification(notif);
   }
 
   public startSession(hostId: string): void {
@@ -767,12 +857,24 @@ export class Room {
         break;
       }
       case "rebuy:request": {
+        const p = this.participants.get(playerId);
+        const name = p ? p.displayName : playerId;
+        const reqAmount =
+          action.amount && action.amount > 0 ? action.amount : this.config.rebuyAmount;
+
+        const notif: TableNotification = {
+          id: randomUUID(),
+          type: "chip_request",
+          playerId,
+          playerName: name,
+          amount: reqAmount,
+          message: `${name} requested ${reqAmount.toLocaleString()} chips`,
+          timestamp: Date.now(),
+        };
+        this.broadcastTableNotification(notif);
+
         if (this.config.rebuyRequiresHostApproval) {
-          const p = this.participants.get(playerId);
-          const name = p ? p.displayName : playerId;
-          this.addActivity(
-            `${name} requested a rebuy (${this.config.rebuyAmount.toLocaleString()} chips)`,
-          );
+          this.addActivity(`${name} requested a rebuy (${reqAmount.toLocaleString()} chips)`);
           this.broadcastSnapshot();
           if (actionId) this.actionDeduplication.set(actionId, { timestamp: Date.now() });
           return;
@@ -834,6 +936,40 @@ export class Room {
     } else if (newPhase === "round_summary") {
       this.roundCount++;
       this.clearAllTimers();
+
+      for (const hand of this.state.hands) {
+        const participant = this.participants.get(hand.playerId);
+        const name = participant ? participant.displayName : hand.playerId;
+        const totalWager = hand.bet + (hand.doubleBet || 0);
+        const currentBalance = this.state.stacks.get(hand.playerId) ?? 0;
+        let txType: "round_win" | "round_loss" | "round_push" = "round_loss";
+        let amount = totalWager;
+        let details = `Round ${this.roundCount} Loss`;
+
+        if (hand.result === "win" || hand.result === "blackjack") {
+          txType = "round_win";
+          details =
+            hand.result === "blackjack"
+              ? `Round ${this.roundCount} Blackjack Win`
+              : `Round ${this.roundCount} Win`;
+        } else if (hand.result === "push") {
+          txType = "round_push";
+          amount = 0;
+          details = `Round ${this.roundCount} Push`;
+        }
+
+        this.addTransaction({
+          id: randomUUID(),
+          roundNumber: this.roundCount,
+          playerId: hand.playerId,
+          displayName: name,
+          type: txType,
+          amount,
+          balanceAfter: currentBalance,
+          details,
+          timestamp: Date.now(),
+        });
+      }
     }
   }
 
@@ -1071,9 +1207,14 @@ export class Room {
 
   // ─── Broadcast Helpers ─────────────────────────────────────────────────────
 
+  public broadcastTableNotification(notif: TableNotification): void {
+    this.broadcastMessage("table:notification", notif);
+  }
+
   public broadcastSnapshot(): void {
     for (const [playerId, socket] of this.sockets) {
       const view = viewFor(this.state, playerId);
+      view.transactions = this.transactions;
       socket.emit("snapshot", {
         type: "snapshot",
         seq: this.state.seq,

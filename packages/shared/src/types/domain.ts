@@ -122,6 +122,30 @@ export interface ChatMessage {
   text: string;
 }
 
-// ─── Legal actions (for UI and property tests) ────────────────────────────────
-
 export type LegalAction = "hit" | "stand" | "double" | "split" | "insurance_yes" | "insurance_no";
+
+// ─── Player transactions statement ──────────────────────────────────────────
+
+export interface PlayerTransaction {
+  id: string;
+  roundNumber: number;
+  playerId: PlayerId;
+  displayName: string;
+  type: "buy_in" | "rebuy" | "round_win" | "round_loss" | "round_push" | "adjustment";
+  amount: number;
+  balanceAfter: number;
+  details?: string;
+  timestamp: number;
+}
+
+// ─── Table popup notifications ───────────────────────────────────────────────
+
+export interface TableNotification {
+  id: string;
+  type: "chip_request" | "chip_approved" | "info";
+  playerId?: PlayerId;
+  playerName?: string;
+  amount?: number;
+  message: string;
+  timestamp: number;
+}

@@ -11,6 +11,7 @@ import { reduce, shouldDealerDraw } from "../reduce.js";
 import { bjWinAmount, settleHand } from "../settlement.js";
 import { buildShoe } from "../shoe.js";
 import type { GameState } from "../state.js";
+import { viewFor } from "../view-for.js";
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -552,16 +553,20 @@ describe("dealer peek and insurance", () => {
     expect(evaluateHand(dealerHand.cards).isBlackjack).toBe(true);
   });
 
-  it("all players bust: dealer goes to round_summary without drawing", () => {
+  it("all players bust: dealer goes to round_summary without opening card or drawing", () => {
     let s = stateInPlayerTurns([c("10"), c("9")], [c("10"), c("6")], [c("5")]);
     s = reduce(s, { type: "play:hit", playerId: "p1", handId: "h1" }).state;
-    // Player busted (24) → dealer_turn
+    // Player busted (25) → dealer_turn
     expect(s.phase).toBe("dealer_turn");
-    // On reveal in auto mode, dealer doesn't need to draw (all resolved)
-    s = { ...s, hands: s.hands.map((h) => ({ ...h, result: "bust" as const, isLocked: true })) };
-    const { state: after } = reduce(s, { type: "dealer:reveal", dealerId: "d1" });
-    // Dealer busted or whatever — all resolved, goes to round_summary
+    // On dealer:reveal when all players are busted:
+    // In casino rules, dealer card is NOT opened and dealer does not draw
+    const { state: after, events } = reduce(s, { type: "dealer:reveal", dealerId: "d1" });
     expect(after.phase).toBe("round_summary");
+    expect(events.some((e) => e.type === "cardFlipped")).toBe(false);
+    expect(after.dealerHoleCardRevealed).toBe(false);
+    expect(after.dealerHand?.cards.length).toBe(2);
+    const view = viewFor(after, "p1");
+    expect(view.dealerHand?.cards[1]?.hidden).toBe(true);
   });
 });
 
@@ -686,6 +691,22 @@ describe("dealer:reveal auto-draw", () => {
     expect(state.phase).toBe("round_summary");
     const dealerHv = evaluateHand(state.dealerHand!.cards);
     expect(dealerHv.isBust).toBe(true);
+  });
+
+  it("dealer never stands on 15: draws until reaching 17+ even if player has blackjack", () => {
+    // Player has natural Blackjack (A + K); Dealer has 10 + 5 (15); Shoe has a 4 (15 + 4 = 19)
+    const base = stateInPlayerTurns([c("A"), c("K")], [c("10"), c("5")], [c("4")]);
+    const s: GameState = {
+      ...base,
+      phase: "dealer_turn",
+      hands: [{ ...base.hands[0]!, isLocked: true, result: "blackjack" }],
+    };
+    const { state } = reduce(s, { type: "dealer:reveal", dealerId: "d1" });
+    expect(state.phase).toBe("round_summary");
+    const dealerHv = evaluateHand(state.dealerHand!.cards);
+    // Dealer must have drawn the 4 to reach 19, not stood on 15
+    expect(dealerHv.total).toBe(19);
+    expect(state.dealerHand?.cards.length).toBe(3);
   });
 });
 

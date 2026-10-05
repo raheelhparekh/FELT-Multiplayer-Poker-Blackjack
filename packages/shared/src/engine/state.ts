@@ -19,6 +19,8 @@ export interface GameState {
   // ─── Bankrolls ─────────────────────────────────────────────────────────────
   stacks: Map<string, number>; // playerId → current chip stack
   totalBuyIns: Map<string, number>; // playerId → cumulative buy-in
+  initialBuyIns: Map<string, number>; // playerId → chips entered with
+  rebuys: Map<string, number>; // playerId → additional chips asked & approved
   dealerBank: number;
   dealerTotalBuyIn: number;
 
@@ -28,6 +30,7 @@ export interface GameState {
   // ─── Current round ─────────────────────────────────────────────────────────
   hands: Hand[]; // player hands, sorted by (seatNumber, splitOrder)
   dealerHand: Hand | null;
+  dealerHoleCardRevealed: boolean;
   seatedPlayers: Map<SeatNumber, string>; // seat → playerId for this round
 
   // ─── Betting phase ─────────────────────────────────────────────────────────

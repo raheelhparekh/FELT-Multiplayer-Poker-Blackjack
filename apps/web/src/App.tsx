@@ -4,6 +4,8 @@ import { BrowserRouter, Route, Routes, useNavigate, useParams } from "react-rout
 import { LandingScreen } from "./screens/LandingScreen";
 import { LobbyScreen } from "./screens/LobbyScreen";
 import { TableScreen } from "./screens/TableScreen";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { NotificationToast } from "./components/NotificationToast";
 import { useGameStore } from "./store/game-store";
 
 const RoomRoute: React.FC = () => {
@@ -85,11 +87,14 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingScreen />} />
-        <Route path="/r/:roomCode" element={<RoomRoute />} />
-        <Route path="*" element={<LandingScreen />} />
-      </Routes>
+      <NotificationToast />
+      <ErrorBoundary>
+        <Routes>
+          <Route path="/" element={<LandingScreen />} />
+          <Route path="/r/:roomCode" element={<RoomRoute />} />
+          <Route path="*" element={<LandingScreen />} />
+        </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

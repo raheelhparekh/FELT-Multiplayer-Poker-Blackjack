@@ -63,6 +63,7 @@ export function setupSocketIO(
           avatarId: string;
           password?: string;
           config?: import("@felt/shared").RoomConfig;
+          buyIn?: number;
           userToken?: string;
           actionId?: string;
         },
@@ -81,6 +82,7 @@ export function setupSocketIO(
             displayName: data.displayName,
             avatarId: data.avatarId,
             password: data.password,
+            buyIn: data.buyIn,
             userId,
           });
 
@@ -110,6 +112,7 @@ export function setupSocketIO(
           avatarId: string;
           token?: string;
           password?: string;
+          buyIn?: number;
           userToken?: string;
           actionId?: string;
         },
@@ -128,6 +131,7 @@ export function setupSocketIO(
             avatarId: data.avatarId,
             token: data.token,
             password: data.password,
+            buyIn: data.buyIn,
             userId,
           });
 
@@ -359,10 +363,13 @@ export function setupSocketIO(
 
     socket.on(
       "host:approveRebuy",
-      (data: { targetId: string; actionId?: string }, ack?: (res: unknown) => void) => {
+      (
+        data: { targetId: string; amount?: number; actionId?: string },
+        ack?: (res: unknown) => void,
+      ) => {
         try {
           const { room, playerId } = getRoomAndPlayer();
-          room.approveRebuy(playerId, data.targetId);
+          room.approveRebuy(playerId, data.targetId, data.amount);
           if (ack) ack({ ok: true });
         } catch (err) {
           handleError(err, data?.actionId, ack);
@@ -615,10 +622,17 @@ export function setupSocketIO(
 
     socket.on(
       "rebuy:request",
-      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+      (
+        data: { amount?: number; actionId?: string } | undefined,
+        ack?: (res: unknown) => void,
+      ) => {
         try {
           const { room, playerId } = getRoomAndPlayer();
-          room.dispatch(playerId, { type: "rebuy:request", playerId }, data?.actionId);
+          room.dispatch(
+            playerId,
+            { type: "rebuy:request", playerId, amount: data?.amount },
+            data?.actionId,
+          );
           if (ack) ack({ ok: true });
         } catch (err) {
           handleError(err, data?.actionId, ack);

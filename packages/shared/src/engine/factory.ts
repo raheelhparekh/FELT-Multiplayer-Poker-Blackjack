@@ -49,6 +49,8 @@ export function createInitialState(
     participants: new Map(),
     stacks: new Map(),
     totalBuyIns: new Map(),
+    initialBuyIns: new Map(),
+    rebuys: new Map(),
     dealerBank: config.dealerStartingBank,
     dealerTotalBuyIn: config.dealerStartingBank,
 
@@ -56,6 +58,7 @@ export function createInitialState(
 
     hands: [],
     dealerHand: null,
+    dealerHoleCardRevealed: false,
     seatedPlayers: new Map(),
 
     pendingBets: new Map(),

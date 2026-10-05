@@ -4,6 +4,7 @@ import type {
   ClientGameView,
   RoomConfig,
   ServerError,
+  TableNotification,
 } from "@felt/shared";
 import { type Socket, io } from "socket.io-client";
 import { create } from "zustand";
@@ -25,6 +26,7 @@ export interface GameStoreState {
   errorMessage: string | null;
   activeModal: ModalType;
   selectedChip: number;
+  tableNotification: TableNotification | null;
 
   // Actions
   init: () => void;
@@ -32,10 +34,11 @@ export interface GameStoreState {
   openModal: (modal: ModalType) => void;
   closeModal: () => void;
   clearError: () => void;
+  dismissNotification: () => void;
   setSelectedChip: (amount: number) => void;
 
-  createRoom: (password?: string, config?: Partial<RoomConfig>) => Promise<string>;
-  joinRoom: (code: string, password?: string) => Promise<void>;
+  createRoom: (password?: string, config?: Partial<RoomConfig>, buyIn?: number) => Promise<string>;
+  joinRoom: (code: string, password?: string, buyIn?: number) => Promise<void>;
   leaveRoom: () => void;
 
   // In-room actions
@@ -75,8 +78,8 @@ export interface GameStoreState {
   playInsurance: (handId: string, accept: boolean) => void;
 
   // Rebuy
-  rebuyRequest: () => void;
-  hostApproveRebuy: (targetId: string) => void;
+  rebuyRequest: (amount?: number) => void;
+  hostApproveRebuy: (targetId: string, amount?: number) => void;
 
   // Chat
   sendChat: (text: string) => void;
@@ -196,6 +199,10 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       });
     });
 
+    socket.on("table:notification", (notif: TableNotification) => {
+      set({ tableNotification: notif });
+    });
+
     socket.on("error", (err: ServerError) => {
       set({ errorMessage: err.message });
     });
@@ -222,6 +229,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     errorMessage: null,
     activeModal: null,
     selectedChip: 100,
+    tableNotification: null,
 
     init: () => {
       const stored = getInitialStoredState();
@@ -234,6 +242,8 @@ export const useGameStore = create<GameStoreState>((set, get) => {
 
       ensureSocket();
     },
+
+    dismissNotification: () => set({ tableNotification: null }),
 
     setProfile: (name: string, avatarId: string) => {
       localStorage.setItem(STORAGE_KEYS.NAME, name);
@@ -253,14 +263,14 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     clearError: () => set({ errorMessage: null }),
     setSelectedChip: (selectedChip: number) => set({ selectedChip }),
 
-    createRoom: async (password?: string, config?: Partial<RoomConfig>) => {
+    createRoom: async (password?: string, config?: Partial<RoomConfig>, buyIn?: number) => {
       const socket = ensureSocket();
       const { displayName, avatarId } = get();
 
       return new Promise<string>((resolve, reject) => {
         socket.emit(
           "room:create",
-          { displayName, avatarId, password, config },
+          { displayName, avatarId, password, config, buyIn },
           (res: {
             ok: boolean;
             data?: { roomCode: string; token: string; participant: { id: string } };
@@ -287,7 +297,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       });
     },
 
-    joinRoom: async (code: string, password?: string) => {
+    joinRoom: async (code: string, password?: string, buyIn?: number) => {
       const socket = ensureSocket();
       const { displayName, avatarId, token, roomCode: storedRoom } = get();
       const cleanCode = code.trim().toUpperCase();
@@ -304,6 +314,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
             avatarId,
             token: activeToken,
             password: password || undefined,
+            buyIn,
           },
           (res: {
             ok: boolean;
@@ -494,14 +505,14 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     },
 
     // Rebuy
-    rebuyRequest: () => {
+    rebuyRequest: (amount?: number) => {
       const socket = ensureSocket();
-      socket.emit("rebuy:request");
+      socket.emit("rebuy:request", { amount });
     },
 
-    hostApproveRebuy: (targetId: string) => {
+    hostApproveRebuy: (targetId: string, amount?: number) => {
       const socket = ensureSocket();
-      socket.emit("host:approveRebuy", { targetId });
+      socket.emit("host:approveRebuy", { targetId, amount });
     },
 
     // Chat

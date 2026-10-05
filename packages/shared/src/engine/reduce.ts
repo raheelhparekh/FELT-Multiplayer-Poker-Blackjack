@@ -70,7 +70,7 @@ export function reduce(state: GameState, action: GameAction): ReducerResult {
       return reduceUpdateConfig(state, action.config);
 
     case "rebuy:request":
-      return reduceRebuy(state, action.playerId);
+      return reduceRebuy(state, action.playerId, action.amount);
 
     default: {
       const _exhaustive: never = action;
@@ -585,28 +585,29 @@ function reduceDealerReveal(state: GameState): ReducerResult {
 
   if (!state.dealerHand) throw new EngineError("ILLEGAL_ACTION", "No dealer hand");
 
+  const allBusted = state.hands.length > 0 && state.hands.every((h) => h.result === "bust");
+  if (allBusted) {
+    // In casino rules: when all players are busted, the dealer card shall NOT be opened and dealer does not draw.
+    const { state: settled, events: settleEvents } = performSettlement({
+      ...state,
+      dealerHoleCardRevealed: false,
+    });
+    return ok(settled, settleEvents);
+  }
+
   const holeCard = state.dealerHand.cards[1]!;
   const events: GameEvent[] = [
     { type: "cardFlipped", handId: state.dealerHand.id, card: holeCard },
   ];
 
-  const { config } = state;
+  const stateWithReveal = { ...state, dealerHoleCardRevealed: true };
+  const { config } = stateWithReveal;
 
-  // If all player hands are busted or resolved, dealer doesn't draw
-  const allResolved = state.hands.every(
-    (h) => h.result === "bust" || h.result === "blackjack" || h.result === "push",
-  );
-
-  if (allResolved) {
-    const { state: settled, events: settleEvents } = performSettlement(state);
-    return ok(settled, [...events, ...settleEvents]);
-  }
-
-  // Auto mode: draw dealer cards until standing
+  // Auto mode: draw dealer cards until standing (17 or higher, or bust)
   if (config.dealerDrawMode === "auto") {
-    let s = state;
-    let shoe = state.shoe;
-    let dealerHand = { ...state.dealerHand, cards: [...state.dealerHand.cards] };
+    let s = stateWithReveal;
+    let shoe = stateWithReveal.shoe;
+    let dealerHand: Hand = { ...state.dealerHand, cards: [...state.dealerHand.cards] };
 
     while (shouldDealerDraw(dealerHand.cards, config.dealerHitsSoft17)) {
       const { card, shoe: newShoe } = drawCard(shoe);
@@ -621,7 +622,7 @@ function reduceDealerReveal(state: GameState): ReducerResult {
   }
 
   // Manual mode: just reveal, dealer clicks draw manually
-  return ok({ ...state, phase: "dealer_turn" }, events);
+  return ok({ ...stateWithReveal, phase: "dealer_turn" }, events);
 }
 
 function reduceDealerDraw(state: GameState): ReducerResult {
@@ -761,6 +762,7 @@ function reduceNextRound(state: GameState): ReducerResult {
       shoe,
       hands: [],
       dealerHand: null,
+      dealerHoleCardRevealed: false,
       lockedBets: new Map(),
       pendingBets: new Map(),
       sittingOut: new Set(),
@@ -851,23 +853,27 @@ function reduceUpdateConfig(state: GameState, configPatch: Partial<RoomConfig>):
   return ok({ ...state, config: parsed.data, shoe }, []);
 }
 
-function reduceRebuy(state: GameState, playerId: string): ReducerResult {
+function reduceRebuy(state: GameState, playerId: string, customAmount?: number): ReducerResult {
   // Auto-grant rebuy (no host approval variant; server wraps with approval logic)
   if (!state.config.rebuyEnabled) {
     throw new EngineError("ILLEGAL_ACTION", "Rebuys are disabled");
   }
+  const rebuyAmount =
+    customAmount !== undefined && customAmount > 0 ? customAmount : state.config.rebuyAmount;
   const stacks = new Map(state.stacks);
   const totalBuyIns = new Map(state.totalBuyIns);
+  const rebuys = new Map(state.rebuys ?? []);
   const currentStack = stacks.get(playerId) ?? 0;
-  const newStack = currentStack + state.config.rebuyAmount;
+  const newStack = currentStack + rebuyAmount;
   stacks.set(playerId, newStack);
-  totalBuyIns.set(playerId, (totalBuyIns.get(playerId) ?? 0) + state.config.rebuyAmount);
-  return ok({ ...state, stacks, totalBuyIns }, [
+  totalBuyIns.set(playerId, (totalBuyIns.get(playerId) ?? 0) + rebuyAmount);
+  rebuys.set(playerId, (rebuys.get(playerId) ?? 0) + rebuyAmount);
+  return ok({ ...state, stacks, totalBuyIns, rebuys }, [
     {
       type: "chipsAdjusted",
       target: playerId,
       op: "add",
-      amount: state.config.rebuyAmount,
+      amount: rebuyAmount,
       newBalance: newStack,
     },
   ]);

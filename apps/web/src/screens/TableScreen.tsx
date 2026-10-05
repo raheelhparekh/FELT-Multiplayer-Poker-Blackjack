@@ -15,36 +15,35 @@ import { useTableChoreography } from "../hooks/useTableChoreography";
 import { useGameStore } from "../store/game-store";
 
 export const TableScreen: React.FC = () => {
+  // Reactive table state subscriptions
   const currentView = useGameStore((s) => s.currentView);
   const myPlayerId = useGameStore((s) => s.myPlayerId);
   const selectedChip = useGameStore((s) => s.selectedChip);
-  const setSelectedChip = useGameStore((s) => s.setSelectedChip);
-  const openModal = useGameStore((s) => s.openModal);
-  const sit = useGameStore((s) => s.sit);
+
+  // Static action methods (stable references from Zustand store)
+  const {
+    setSelectedChip,
+    openModal,
+    sit,
+    betAdd,
+    betUndo,
+    betClear,
+    betRepeat,
+    betLock,
+    betSitOut,
+    playHit,
+    playStand,
+    playDouble,
+    playSplit,
+    playInsurance,
+    dealerDeal,
+    dealerReveal,
+    dealerDraw,
+    dealerNextRound,
+    dealerShuffle,
+  } = useGameStore.getState();
 
   const choreography = useTableChoreography(currentView);
-
-  // Betting actions
-  const betAdd = useGameStore((s) => s.betAdd);
-  const betUndo = useGameStore((s) => s.betUndo);
-  const betClear = useGameStore((s) => s.betClear);
-  const betRepeat = useGameStore((s) => s.betRepeat);
-  const betLock = useGameStore((s) => s.betLock);
-  const betSitOut = useGameStore((s) => s.betSitOut);
-
-  // Player hand actions
-  const playHit = useGameStore((s) => s.playHit);
-  const playStand = useGameStore((s) => s.playStand);
-  const playDouble = useGameStore((s) => s.playDouble);
-  const playSplit = useGameStore((s) => s.playSplit);
-  const playInsurance = useGameStore((s) => s.playInsurance);
-
-  // Dealer actions
-  const dealerDeal = useGameStore((s) => s.dealerDeal);
-  const dealerReveal = useGameStore((s) => s.dealerReveal);
-  const dealerDraw = useGameStore((s) => s.dealerDraw);
-  const dealerNextRound = useGameStore((s) => s.dealerNextRound);
-  const dealerShuffle = useGameStore((s) => s.dealerShuffle);
 
   if (!currentView) return null;
 
