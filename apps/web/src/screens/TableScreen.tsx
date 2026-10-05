@@ -105,7 +105,7 @@ export const TableScreen: React.FC = () => {
             <DealerArea
               dealerHand={dealerHand}
               dealerParticipant={participants.find((p) => p.id === dealerId)}
-              dealerBank={dealerBank}
+              dealerBank={dealerBank ?? 0}
               phase={phase}
               isDealerOrHost={isDealerOrHost}
               canDeal={

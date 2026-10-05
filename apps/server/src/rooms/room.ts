@@ -32,7 +32,7 @@ import type { NewSessionPlayerResult } from "../db/schema.js";
 
 export interface RoomOptions {
   roomCode: string;
-  config?: RoomConfig | undefined;
+  config?: Partial<RoomConfig> | undefined;
   password?: string | undefined;
   pacingEnabled?: boolean | undefined;
   onEmptyRoomDestroy?: ((code: string) => void) | undefined;
@@ -81,7 +81,8 @@ export class Room {
   constructor(options: RoomOptions) {
     this.roomCode = options.roomCode.toUpperCase();
     if (options.password) this.password = options.password;
-    this.config = options.config ?? defaultRoomConfig();
+    const baseConfig = defaultRoomConfig();
+    this.config = options.config ? { ...baseConfig, ...options.config } : baseConfig;
     this.pacingEnabled = options.pacingEnabled ?? true;
     this.onEmptyRoomDestroy = options.onEmptyRoomDestroy;
 
@@ -252,9 +253,41 @@ export class Room {
     this.addActivity(`${participant.displayName} disconnected`);
     this.broadcastPresence(playerId, false);
 
+    const wasHost = playerId === this.hostId;
+    const wasDealer = playerId === this.dealerId;
+    const isGameActive = this.state.isSessionStarted || this.state.phase !== "lobby";
+
+    // If the dealer or host leaves or exits during an active game session,
+    // automatically end the game and return all players to the lobby.
+    if ((wasHost || wasDealer) && isGameActive) {
+      const roleStr = wasHost && wasDealer ? "Host & Dealer" : wasHost ? "Host" : "Dealer";
+      this.endSessionInternal(
+        `${participant.displayName} (${roleStr}) left the game - session ended, returning to lobby`,
+      );
+    }
+
     // Host auto-transfer if the host disconnected
-    if (playerId === this.hostId) {
+    if (wasHost) {
       this.autoTransferHost();
+    }
+
+    // If the dealer disconnected or host changed, reassign dealer to current/new host
+    if (wasDealer || this.dealerId === playerId) {
+      this.dealerId = this.hostId;
+      this.state.dealerId = this.hostId;
+      if (this.hostId) {
+        const newDealer = this.participants.get(this.hostId);
+        if (newDealer) {
+          if (newDealer.seat !== null) {
+            const seat = newDealer.seat;
+            newDealer.seat = null;
+            const seatedPlayers = new Map(this.state.seatedPlayers);
+            seatedPlayers.delete(seat);
+            this.state = { ...this.state, seatedPlayers };
+          }
+          newDealer.role = "dealer";
+        }
+      }
     }
 
     // Seat hold timer if seated
@@ -283,12 +316,11 @@ export class Room {
 
     const participant = this.participants.get(playerId);
     if (participant?.seat !== null) {
-      // If seated, standing up frees the seat
-      try {
-        this.stand(playerId);
-      } catch {
-        // Ignore if mid-round
-      }
+      const seat = participant.seat;
+      participant.seat = null;
+      const seatedPlayers = new Map(this.state.seatedPlayers);
+      seatedPlayers.delete(seat);
+      this.state = { ...this.state, seatedPlayers };
     }
 
     this.handleDisconnect(socketId);
@@ -455,9 +487,13 @@ export class Room {
       }
     }
 
-    if (this.dealerId === targetId) {
-      this.dealerId = null;
-      this.state.dealerId = null;
+    const wasDealer = this.dealerId === targetId;
+    if (wasDealer) {
+      this.dealerId = this.hostId;
+      this.state.dealerId = this.hostId;
+      if (this.state.isSessionStarted || this.state.phase !== "lobby") {
+        this.endSessionInternal(`${target.displayName} (Dealer) was kicked - session ended, returning to lobby`);
+      }
     }
 
     // Disconnect socket
@@ -586,14 +622,21 @@ export class Room {
 
   public endSession(hostId: string): void {
     this.assertHost(hostId);
-    this.clearAllTimers();
+    this.endSessionInternal("Host ended the game session");
+    this.broadcastSnapshot();
+  }
+
+  private endSessionInternal(reason?: string): void {
+    this.clearBetTimer();
+    this.clearActionTimer();
+    this.clearInsuranceTimer();
 
     // Persist session summary and player results per Brief Section 11
     const roomCode = this.roomCode;
     const startedAt = new Date(this.sessionStartedAt);
     const endedAt = new Date();
     const rounds = this.roundCount;
-    const hostParticipant = this.participants.get(hostId);
+    const hostParticipant = this.hostId ? this.participants.get(this.hostId) : undefined;
     const hostUserId = hostParticipant?.userId || null;
 
     dbService
@@ -628,9 +671,35 @@ export class Room {
 
     dbService.deleteRoomSnapshot(this.roomCode).catch(() => {});
 
-    this.state = { ...this.state, phase: "lobby", isSessionStarted: false };
-    this.addActivity("Host ended the game session");
-    this.broadcastSnapshot();
+    // Refund any chips that were in locked bets or pending bets
+    const stacks = new Map(this.state.stacks);
+    for (const [pid, bet] of this.state.lockedBets.entries()) {
+      stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
+    }
+    for (const hand of this.state.hands) {
+      if (hand.result === "pending") {
+        const inPlay = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
+        stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + inPlay);
+      }
+    }
+
+    this.state = {
+      ...this.state,
+      stacks,
+      phase: "lobby",
+      isSessionStarted: false,
+      hands: [],
+      dealerHand: null,
+      pendingBets: new Map(),
+      lockedBets: new Map(),
+      sittingOut: new Set(),
+      insurancePending: new Set(),
+      insuranceDecisions: new Map(),
+      activeHandId: null,
+      betDeadline: null,
+      actionDeadline: null,
+    };
+    this.addActivity(reason ?? "Host ended the game session");
   }
 
   public claimUser(playerId: string, userId: string): void {
@@ -1068,6 +1137,11 @@ export class Room {
     nextHost.isHost = true;
     this.hostId = nextHost.id;
     this.state.hostId = nextHost.id;
+
+    const stateParticipants = new Map(this.state.participants);
+    if (oldHost) stateParticipants.set(oldHost.id, { ...oldHost });
+    stateParticipants.set(nextHost.id, { ...nextHost });
+    this.state = { ...this.state, participants: stateParticipants, hostId: nextHost.id };
 
     this.addActivity(`${nextHost.displayName} is now the host (previous host disconnected)`);
   }

@@ -4,7 +4,7 @@ import { dbService } from "../db/index.js";
 import { Room } from "./room.js";
 
 export interface CreateRoomOptions {
-  config?: RoomConfig | undefined;
+  config?: Partial<RoomConfig> | undefined;
   password?: string | undefined;
   pacingEnabled?: boolean | undefined;
 }

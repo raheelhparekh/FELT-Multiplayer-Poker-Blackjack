@@ -25,7 +25,7 @@ interface DealerAreaProps {
 export const DealerArea: React.FC<DealerAreaProps> = ({
   dealerHand,
   dealerParticipant,
-  dealerBank,
+  dealerBank = 0,
   phase,
   isDealerOrHost,
   canDeal,
@@ -74,7 +74,7 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
         <div className="text-right">
           <span className="text-[10px] text-felt-light/60 block">Bank</span>
           <span className="text-sm font-bold text-gold-300 font-mono">
-            ₹{dealerBank.toLocaleString()}
+            ₹{(dealerBank ?? 0).toLocaleString()}
           </span>
         </div>
       </div>

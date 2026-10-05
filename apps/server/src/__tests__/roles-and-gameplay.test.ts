@@ -288,4 +288,80 @@ describe("Roles, Gameplay & Hidden Info Audit", () => {
     host.disconnect();
     dealer.disconnect();
   });
+
+  it("automatically ends game and returns players to lobby when dealer leaves or disconnects", async () => {
+    const host = new TestClient("Host");
+    const dealer = new TestClient("Dealer");
+    const player = new TestClient("Player");
+
+    await host.connect(serverUrl);
+    await dealer.connect(serverUrl);
+    await player.connect(serverUrl);
+
+    const { roomCode } = await host.createRoom({
+      displayName: "Host",
+      avatarId: "av-h",
+    });
+
+    await dealer.joinRoom({ code: roomCode, displayName: "Dealer", avatarId: "av-d" });
+    await player.joinRoom({ code: roomCode, displayName: "Player", avatarId: "av-p" });
+
+    await host.setDealer(dealer.playerId);
+    await player.sit(1);
+    await host.waitForSnapshot(
+      (s) => s.participants.find((p) => p.id === player.playerId)?.seat === 1,
+    );
+
+    await host.startSession();
+    await player.waitForPhase("betting");
+
+    // Dealer disconnects/leaves mid-game
+    dealer.disconnect();
+
+    // Remaining player and host should receive snapshot transitioning back to lobby
+    const lobbyView = await player.waitForSnapshot(
+      (s) => s.phase === "lobby" && !s.isSessionStarted,
+    );
+    expect(lobbyView.phase).toBe("lobby");
+    expect(lobbyView.isSessionStarted).toBe(false);
+
+    host.disconnect();
+    player.disconnect();
+  });
+
+  it("automatically ends game and returns players to lobby when host leaves or disconnects", async () => {
+    const host = new TestClient("Host");
+    const player = new TestClient("Player");
+
+    await host.connect(serverUrl);
+    await player.connect(serverUrl);
+
+    const { roomCode } = await host.createRoom({
+      displayName: "Host",
+      avatarId: "av-h",
+    });
+
+    await player.joinRoom({ code: roomCode, displayName: "Player", avatarId: "av-p" });
+    await player.sit(1);
+    await host.waitForSnapshot(
+      (s) => s.participants.find((p) => p.id === player.playerId)?.seat === 1,
+    );
+
+    // Host starts session (host is also default dealer)
+    await host.startSession();
+    await player.waitForPhase("betting");
+
+    // Host disconnects/leaves mid-game
+    host.disconnect();
+
+    // Remaining player should see session ended, phase reset to lobby, and host transferred
+    const lobbyView = await player.waitForSnapshot(
+      (s) => s.phase === "lobby" && !s.isSessionStarted && s.hostId === player.playerId,
+    );
+    expect(lobbyView.phase).toBe("lobby");
+    expect(lobbyView.isSessionStarted).toBe(false);
+    expect(lobbyView.hostId).toBe(player.playerId);
+
+    player.disconnect();
+  });
 });
