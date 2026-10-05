@@ -47,7 +47,9 @@ export interface ClientGameView {
   seq: number;
   /** Per-player stacks (all players can see everyone's stack). */
   stacks: Record<string, number>;
+  totalBuyIns: Record<string, number>;
   dealerBank: number;
+  dealerTotalBuyIn: number;
   stackHistory: Array<Record<string, number>>;
   hostId?: string | undefined;
   dealerId?: string | null | undefined;
@@ -81,7 +83,9 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
     insurancePending: Array.from(state.insurancePending),
     seq: state.seq,
     stacks: Object.fromEntries(state.stacks),
+    totalBuyIns: Object.fromEntries(state.totalBuyIns),
     dealerBank: state.dealerBank,
+    dealerTotalBuyIn: state.dealerTotalBuyIn ?? state.config.dealerStartingBank,
     stackHistory: state.stackHistory,
     hostId: state.hostId,
     dealerId: state.dealerId,

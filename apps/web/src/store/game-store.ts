@@ -34,7 +34,7 @@ export interface GameStoreState {
   clearError: () => void;
   setSelectedChip: (amount: number) => void;
 
-  createRoom: (password?: string, config?: RoomConfig) => Promise<string>;
+  createRoom: (password?: string, config?: Partial<RoomConfig>) => Promise<string>;
   joinRoom: (code: string, password?: string) => Promise<void>;
   leaveRoom: () => void;
 
@@ -150,10 +150,19 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         activityLog?: ActivityEntry[];
       }) => {
         set((state) => {
+          const prevView = state.currentView;
+          const wasSessionStarted = Boolean(prevView?.isSessionStarted && prevView?.phase !== "lobby");
+          const isSessionEnded = Boolean(
+            wasSessionStarted && !payload.data.isSessionStarted && payload.data.phase === "lobby",
+          );
+
           const updates: Partial<GameStoreState> = {
             currentView: payload.data,
             roomCode: payload.data.roomCode,
           };
+          if (isSessionEnded) {
+            updates.activeModal = "standings";
+          }
           if (payload.chatLog) updates.chatLog = payload.chatLog;
           if (payload.activityLog) updates.activityLog = payload.activityLog;
           return updates;
@@ -244,7 +253,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     clearError: () => set({ errorMessage: null }),
     setSelectedChip: (selectedChip: number) => set({ selectedChip }),
 
-    createRoom: async (password?: string, config?: RoomConfig) => {
+    createRoom: async (password?: string, config?: Partial<RoomConfig>) => {
       const socket = ensureSocket();
       const { displayName, avatarId } = get();
 

@@ -51,9 +51,9 @@ function canDouble(hand: Hand, config: RoomConfig, state: GameState): boolean {
 
   const hv = evaluateHand(hand.cards);
 
-  // Restriction: only totals 9-11
+  // Restriction: only hard totals 9-11 (standard casino blackjack rules)
   if (config.doubleRestriction === "9-11") {
-    if (hv.total < 9 || hv.total > 11) return false;
+    if (hv.isSoft || hv.total < 9 || hv.total > 11) return false;
   }
 
   // Player must be able to afford the extra bet

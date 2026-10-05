@@ -1,4 +1,5 @@
-import type { ClientGameView, ClientHand, Participant } from "@felt/shared";
+import type { Card, ClientGameView, ClientHand, Participant } from "@felt/shared";
+import { evaluateHand } from "@felt/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { soundEngine } from "../audio/sound-engine";
@@ -207,6 +208,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
   // 3. Player Turns Phase
   if (view.phase === "player_turns") {
+    if (isSeated && myHands.length === 0) {
+      return (
+        <div className="w-full max-w-sm mx-auto p-2.5 bg-black/80 rounded-2xl border border-gold-400/40 text-center shadow">
+          <span className="text-xs text-gold-300 font-semibold">
+            Seat #{myParticipant?.seat} reserved • You will join when the next round begins!
+          </span>
+        </div>
+      );
+    }
+
     if (!isMyTurn || !activeHand) {
       const activePlayer = view.participants.find((p: Participant) => p.id === activeHand?.playerId);
       const activeName = activePlayer ? activePlayer.displayName : "player";
@@ -222,8 +233,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
     // It is MY turn on activeHand!
     const myStack = view.stacks[myPlayerId] ?? 0;
+    const activeCards = activeHand.cards
+      .filter((c) => "card" in c)
+      .map((c) => (c as { card: Card }).card);
+    const hv = evaluateHand(activeCards);
+    const isDoubleCountValid =
+      view.config.doubleRestriction === "9-11"
+        ? !hv.isSoft && (hv.total === 9 || hv.total === 10 || hv.total === 11)
+        : true;
+
     const canDouble =
-      myStack >= activeHand.bet && activeHand.cards.length === 2 && !activeHand.isDoubled;
+      myStack >= activeHand.bet &&
+      activeHand.cards.length === 2 &&
+      !activeHand.isDoubled &&
+      isDoubleCountValid;
     const canSplit =
       myStack >= activeHand.bet &&
       activeHand.cards.length === 2 &&

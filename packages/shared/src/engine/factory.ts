@@ -50,6 +50,7 @@ export function createInitialState(
     stacks: new Map(),
     totalBuyIns: new Map(),
     dealerBank: config.dealerStartingBank,
+    dealerTotalBuyIn: config.dealerStartingBank,
 
     shoe: buildShoe(config.decks, config.penetration),
 

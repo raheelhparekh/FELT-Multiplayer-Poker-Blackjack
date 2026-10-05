@@ -426,6 +426,18 @@ describe("play:double", () => {
     );
     expect(() => reduce(s, { type: "play:double", playerId: "p1", handId: "h1" })).not.toThrow();
   });
+
+  it("double disallowed on soft hands with 9-11 restriction (e.g. A+2 = soft 13/3 or A+8 = soft 19)", () => {
+    const s = stateInPlayerTurns(
+      [c("A"), c("2")], // soft 13 (or 3)
+      [c("10"), c("6")],
+      [c("4")],
+      { doubleRestriction: "9-11" },
+    );
+    expect(() => reduce(s, { type: "play:double", playerId: "p1", handId: "h1" })).toThrowError(
+      EngineError,
+    );
+  });
 });
 
 // ─── Split ────────────────────────────────────────────────────────────────────
@@ -608,15 +620,46 @@ describe("host:adjustChips", () => {
     expect(state.dealerBank).toBe(before + 5000);
   });
 
-  it("subtract from dealer bank (floor at 0)", () => {
-    const s = createInitialState("R");
-    const { state } = reduce(s, {
-      type: "host:adjustChips",
-      target: "dealer",
-      op: "subtract",
-      amount: 999999,
+  it("accurately updates buy-ins and preserves gambling Net PNL when chips are adjusted", () => {
+    let s = createInitialState("R");
+    s = addParticipant(s, {
+      id: "p1",
+      displayName: "P1",
+      avatarId: "lion",
+      role: "player",
+      seat: 1,
+      isConnected: true,
+      isHost: false,
+      isGuest: true,
     });
-    expect(state.dealerBank).toBe(0);
+    // Initially stack = 5000, buy-in = 5000, Net = 0
+    expect(s.stacks.get("p1")).toBe(5000);
+    expect(s.totalBuyIns.get("p1")).toBe(5000);
+
+    // Host adds 2000 chips to player's wallet
+    let res = reduce(s, {
+      type: "host:adjustChips",
+      target: "p1",
+      op: "add",
+      amount: 2000,
+    });
+    s = res.state;
+    expect(s.stacks.get("p1")).toBe(7000);
+    expect(s.totalBuyIns.get("p1")).toBe(7000);
+    // Net PNL is still 0 (external injection is not gameplay profit)
+    expect((s.stacks.get("p1") ?? 0) - (s.totalBuyIns.get("p1") ?? 0)).toBe(0);
+
+    // Host subtracts 1000 chips from player
+    res = reduce(s, {
+      type: "host:adjustChips",
+      target: "p1",
+      op: "subtract",
+      amount: 1000,
+    });
+    s = res.state;
+    expect(s.stacks.get("p1")).toBe(6000);
+    expect(s.totalBuyIns.get("p1")).toBe(6000);
+    expect((s.stacks.get("p1") ?? 0) - (s.totalBuyIns.get("p1") ?? 0)).toBe(0);
   });
 });
 

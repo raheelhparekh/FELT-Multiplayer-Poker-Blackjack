@@ -20,6 +20,7 @@ export interface GameState {
   stacks: Map<string, number>; // playerId → current chip stack
   totalBuyIns: Map<string, number>; // playerId → cumulative buy-in
   dealerBank: number;
+  dealerTotalBuyIn: number;
 
   // ─── Shoe ──────────────────────────────────────────────────────────────────
   shoe: Shoe;

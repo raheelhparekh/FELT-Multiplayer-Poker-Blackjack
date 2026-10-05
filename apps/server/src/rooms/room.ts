@@ -529,7 +529,6 @@ export class Room {
     amount: number,
   ): void {
     this.assertHost(hostId);
-    this.assertBetweenRounds();
 
     this.dispatchEngineAction({
       type: "host:adjustChips",

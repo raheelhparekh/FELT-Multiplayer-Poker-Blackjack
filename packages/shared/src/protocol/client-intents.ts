@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PartialRoomConfigSchema } from "../types/config.js";
 
 // ─── Base ─────────────────────────────────────────────────────────────────────
 
@@ -13,6 +14,7 @@ export const RoomCreateSchema = BaseIntent.extend({
   type: z.literal("room:create"),
   displayName: z.string().min(1).max(30),
   avatarId: z.string(),
+  config: PartialRoomConfigSchema.optional(),
 });
 
 export const RoomJoinSchema = BaseIntent.extend({

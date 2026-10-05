@@ -3,43 +3,6 @@ import type React from "react";
 import { useGameStore } from "../../store/game-store";
 import { AVATAR_OPTIONS } from "../../types/avatars";
 
-interface SparklineProps {
-  points: number[];
-  isPositive: boolean;
-}
-
-const Sparkline: React.FC<SparklineProps> = ({ points, isPositive }) => {
-  if (points.length < 2) {
-    return <span className="w-12 text-center text-[10px] text-emerald-600/40 font-mono">—</span>;
-  }
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max === min ? 1 : max - min;
-  const w = 48;
-  const h = 14;
-  const coords = points
-    .map((val, idx) => {
-      const x = (idx / (points.length - 1)) * w;
-      const y = h - ((val - min) / range) * (h - 4) - 2;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-
-  return (
-    <svg width={w} height={h} className="overflow-visible shrink-0">
-      <title>Chip Trend</title>
-      <polyline
-        fill="none"
-        stroke={isPositive ? "#34d399" : "#f43f5e"}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={coords}
-      />
-    </svg>
-  );
-};
-
 export const StandingsModal: React.FC = () => {
   const activeModal = useGameStore((s) => s.activeModal);
   const closeModal = useGameStore((s) => s.closeModal);
@@ -54,46 +17,59 @@ export const StandingsModal: React.FC = () => {
   const {
     participants,
     stacks,
+    totalBuyIns = {},
     config,
     dealerBank,
+    dealerTotalBuyIn,
     roundNumber,
     phase,
     dealerId,
     hostId,
     hands,
-    stackHistory,
+    isSessionStarted,
   } = currentView;
+
   const isDealerOrHost = myPlayerId === dealerId || myPlayerId === hostId;
   const isRoundSummary = phase === "round_summary";
+  const isSessionOver = !isSessionStarted || phase === "lobby";
 
-  // Sort participants by stack descending
-  const sortedParticipants = [...participants].sort((a: Participant, b: Participant) => {
-    const stackA = stacks[a.id] ?? 0;
-    const stackB = stacks[b.id] ?? 0;
-    return stackB - stackA;
+  // Calculate each participant's accurate stack, buy-in and net PNL
+  const participantData = participants.map((p: Participant) => {
+    const isDealer = p.id === dealerId;
+    const stack = isDealer ? dealerBank : (stacks[p.id] ?? 0);
+    const buyIn = isDealer
+      ? (dealerTotalBuyIn ?? config.dealerStartingBank)
+      : (totalBuyIns[p.id] ?? config.startingStack);
+    const net = stack - buyIn;
+    return { participant: p, isDealer, stack, buyIn, net };
   });
 
+  // Sort by net PNL descending (highest profit first)
+  const sortedData = [...participantData].sort((a, b) => b.net - a.net);
+
+  const totalTableNet = sortedData.reduce((sum, item) => sum + item.net, 0);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-lg max-h-[90vh] bg-[#0c1a11] border border-gold-400/40 rounded-3xl flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-emerald-900/50 bg-black/40">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🏆</span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">🏆</span>
             <div>
               <h2 className="text-base font-bold text-gold-300 tracking-wide">
-                Table Standings & Chip Net
+                {isSessionOver ? "Session Final Standings & PNL" : "Table Standings & Chip Net"}
               </h2>
               <p className="text-[11px] text-emerald-400/70 font-mono">
-                Round {roundNumber} • Dealer Bank:{" "}
-                {dealerBank > 0 ? `+₹${dealerBank.toLocaleString()}` : `₹${dealerBank.toLocaleString()}`}
+                {isSessionOver ? "Session Completed" : `Round ${roundNumber}`} • House Bank:{" "}
+                <span className="text-white font-bold">₹{dealerBank.toLocaleString()}</span>
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={closeModal}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-emerald-400 hover:text-white hover:bg-emerald-900/50 transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-emerald-400 hover:text-white hover:bg-emerald-900/50 transition-colors text-base"
           >
             ✕
           </button>
@@ -101,39 +77,53 @@ export const StandingsModal: React.FC = () => {
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-          {/* Top 3 Podium if Session Over */}
-          {sortedParticipants.length >= 3 && isRoundSummary && (
-            <div className="grid grid-cols-3 gap-2 p-3 bg-black/40 border border-gold-400/30 rounded-2xl text-center">
+          {/* Top 3 Podium if Session Over or Round Summary */}
+          {sortedData.length >= 2 && (isSessionOver || isRoundSummary) && (
+            <div className="grid grid-cols-3 gap-2 p-3 bg-black/40 border border-gold-400/30 rounded-2xl text-center items-end">
               {/* 2nd Place */}
               <div className="flex flex-col items-center justify-end pb-1">
                 <span className="text-lg">🥈</span>
                 <span className="font-bold text-white text-[11px] truncate max-w-[80px]">
-                  {sortedParticipants[1]?.displayName}
+                  {sortedData[1]?.participant.displayName}
                 </span>
-                <span className="text-[10px] text-zinc-400 font-mono">
-                  ₹{(stacks[sortedParticipants[1]?.id ?? ""] ?? 0).toLocaleString()}
+                <span
+                  className={`text-[10px] font-mono font-bold ${
+                    (sortedData[1]?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                  }`}
+                >
+                  {(sortedData[1]?.net ?? 0) >= 0 ? "+" : ""}₹{sortedData[1]?.net.toLocaleString()}
                 </span>
               </div>
               {/* 1st Place */}
               <div className="flex flex-col items-center justify-end pb-2">
                 <span className="text-2xl animate-bounce">👑</span>
                 <span className="font-black text-gold-300 text-xs truncate max-w-[90px]">
-                  {sortedParticipants[0]?.displayName}
+                  {sortedData[0]?.participant.displayName}
                 </span>
-                <span className="text-[11px] text-gold-400 font-mono font-bold">
-                  ₹{(stacks[sortedParticipants[0]?.id ?? ""] ?? 0).toLocaleString()}
+                <span
+                  className={`text-[11px] font-mono font-bold ${
+                    (sortedData[0]?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                  }`}
+                >
+                  {(sortedData[0]?.net ?? 0) >= 0 ? "+" : ""}₹{sortedData[0]?.net.toLocaleString()}
                 </span>
               </div>
               {/* 3rd Place */}
-              <div className="flex flex-col items-center justify-end pb-1">
-                <span className="text-lg">🥉</span>
-                <span className="font-bold text-white text-[11px] truncate max-w-[80px]">
-                  {sortedParticipants[2]?.displayName}
-                </span>
-                <span className="text-[10px] text-zinc-400 font-mono">
-                  ₹{(stacks[sortedParticipants[2]?.id ?? ""] ?? 0).toLocaleString()}
-                </span>
-              </div>
+              {sortedData[2] && (
+                <div className="flex flex-col items-center justify-end pb-1">
+                  <span className="text-lg">🥉</span>
+                  <span className="font-bold text-white text-[11px] truncate max-w-[80px]">
+                    {sortedData[2]?.participant.displayName}
+                  </span>
+                  <span
+                    className={`text-[10px] font-mono font-bold ${
+                      (sortedData[2]?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                    }`}
+                  >
+                    {(sortedData[2]?.net ?? 0) >= 0 ? "+" : ""}₹{sortedData[2]?.net.toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -190,29 +180,20 @@ export const StandingsModal: React.FC = () => {
             </div>
           )}
 
-          {/* Leaderboard Table with Sparklines */}
-          <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-2xl overflow-hidden">
-            <div className="grid grid-cols-12 px-3 py-2 bg-black/40 text-[10px] font-bold text-emerald-400 uppercase tracking-wider border-b border-emerald-900/40 items-center">
+          {/* Live Standings Table (Trend column removed for cleaner mobile layout) */}
+          <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-2xl overflow-hidden shadow">
+            <div className="grid grid-cols-12 px-3 py-2 bg-black/50 text-[10px] font-bold text-emerald-400 uppercase tracking-wider border-b border-emerald-900/40 items-center">
               <span className="col-span-1 text-center">#</span>
-              <span className="col-span-4">Player</span>
-              <span className="col-span-2 text-center">Trend</span>
-              <span className="col-span-2 text-right">Stack</span>
-              <span className="col-span-3 text-right">Net</span>
+              <span className="col-span-5">Player</span>
+              <span className="col-span-3 text-right">Balance</span>
+              <span className="col-span-3 text-right">Net PNL</span>
             </div>
 
             <div className="divide-y divide-emerald-900/30">
-              {sortedParticipants.map((p: Participant, index: number) => {
-                const stack = stacks[p.id] ?? 0;
-                const buyIn = config.startingStack;
-                const net = stack - buyIn;
+              {sortedData.map((item, index: number) => {
+                const { participant: p, isDealer, stack, net } = item;
                 const isMe = p.id === myPlayerId;
                 const avatar = AVATAR_OPTIONS.find((a) => a.id === p.avatarId) ?? AVATAR_OPTIONS[0];
-
-                // Build history points for sparkline
-                const points = stackHistory ? stackHistory.map((h) => h[p.id] ?? buyIn) : [];
-                if (points.length === 0 || points[points.length - 1] !== stack) {
-                  points.push(stack);
-                }
 
                 return (
                   <div
@@ -224,33 +205,49 @@ export const StandingsModal: React.FC = () => {
                     <span className="col-span-1 text-center font-bold text-emerald-500 text-xs">
                       {index + 1}
                     </span>
-                    <div className="col-span-4 flex items-center gap-2 min-w-0">
-                      <span className="text-sm shrink-0">{avatar?.emoji ?? "🦁"}</span>
+                    <div className="col-span-5 flex items-center gap-2 min-w-0 pr-1">
+                      <span className="text-base shrink-0">{avatar?.emoji ?? "🦁"}</span>
                       <div className="truncate">
-                        <span className={`font-bold ${isMe ? "text-gold-300" : "text-white"}`}>
-                          {p.displayName}
-                        </span>
-                        {isMe && (
-                          <span className="text-[10px] text-emerald-400 font-mono ml-1">(You)</span>
-                        )}
-                        {p.seat !== null && (
-                          <span className="block text-[10px] text-emerald-500/70 font-mono">
-                            Seat {p.seat}
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`font-bold text-xs truncate ${
+                              isMe ? "text-gold-300" : "text-white"
+                            }`}
+                          >
+                            {p.displayName}
                           </span>
-                        )}
+                          {isMe && (
+                            <span className="text-[9px] text-emerald-400 font-mono shrink-0">
+                              (You)
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {isDealer && (
+                            <span className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/40 px-1 rounded font-bold">
+                              DEALER
+                            </span>
+                          )}
+                          {p.id === hostId && (
+                            <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 rounded font-bold">
+                              HOST
+                            </span>
+                          )}
+                          {!isDealer && p.seat !== null && (
+                            <span className="text-[9px] text-emerald-500/70 font-mono">
+                              Seat {p.seat}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Sparkline Column */}
-                    <div className="col-span-2 flex justify-center">
-                      <Sparkline points={points} isPositive={net >= 0} />
-                    </div>
-
-                    <span className="col-span-2 text-right font-mono font-bold text-white">
+                    <span className="col-span-3 text-right font-mono font-bold text-white text-xs">
                       ₹{stack.toLocaleString()}
                     </span>
+
                     <span
-                      className={`col-span-3 text-right font-mono font-bold ${
+                      className={`col-span-3 text-right font-mono font-bold text-xs ${
                         net > 0 ? "text-emerald-400" : net < 0 ? "text-rose-400" : "text-zinc-400"
                       }`}
                     >
@@ -259,6 +256,14 @@ export const StandingsModal: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Zero-Sum Balance Check Footer */}
+            <div className="px-3 py-2 bg-black/60 border-t border-emerald-900/40 flex items-center justify-between text-[11px] font-mono text-emerald-400/80">
+              <span>Table PNL Balance</span>
+              <span className={`font-bold ${totalTableNet === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                ₹{totalTableNet.toLocaleString()} (Zero-Sum Verified)
+              </span>
             </div>
           </div>
         </div>

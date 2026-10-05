@@ -6,7 +6,7 @@ export const BaseRoomConfigSchema = z.object({
   penetration: z.number().min(0.5).max(0.9).default(0.75),
   dealerHitsSoft17: z.boolean().default(false),
   blackjackPayout: z.enum(["3:2", "6:5"]).default("3:2"),
-  doubleRestriction: z.enum(["any", "9-11"]).default("any"),
+  doubleRestriction: z.enum(["any", "9-11"]).default("9-11"),
   doubleAfterSplit: z.boolean().default(true),
   maxSplitHands: z.number().int().min(2).max(4).default(4),
   splitBy: z.enum(["value", "rank"]).default("value"),

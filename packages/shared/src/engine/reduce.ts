@@ -739,10 +739,13 @@ function reduceNextRound(state: GameState): ReducerResult {
     if (parsed.success) config = parsed.data;
   }
 
-  // Reshuffle if cut card was passed
+  // Reshuffle if cut card was passed or decks changed
   let shoe = state.shoe;
   const events: GameEvent[] = [];
-  if (shoe.cutCardPassed || shoe.cards.length < 20) {
+  const decksChanged = Boolean(
+    state.pendingConfig?.decks && state.pendingConfig.decks !== state.config.decks,
+  );
+  if (decksChanged || shoe.cutCardPassed || shoe.cards.length < 20) {
     shoe = buildShoe(config.decks, config.penetration);
     events.push({ type: "shuffled" });
   }
@@ -799,16 +802,26 @@ function reduceAdjustChips(
 
   let s: GameState;
   if (isDealer) {
-    s = { ...state, dealerBank: newBalance };
+    let dealerTotalBuyIn = state.dealerTotalBuyIn ?? state.config.dealerStartingBank;
+    if (op === "add") {
+      dealerTotalBuyIn += amount;
+    } else if (op === "subtract") {
+      dealerTotalBuyIn = Math.max(0, dealerTotalBuyIn - amount);
+    } else if (op === "set") {
+      dealerTotalBuyIn = Math.max(0, dealerTotalBuyIn + (newBalance - current));
+    }
+    s = { ...state, dealerBank: newBalance, dealerTotalBuyIn };
   } else {
     const stacks = new Map(state.stacks);
     stacks.set(target, newBalance);
-    // Also update totalBuyIn if adding chips
+    // Also update totalBuyIn proportionally when adjusting chips so net PNL reflects true gameplay profit/loss
     const totalBuyIns = new Map(state.totalBuyIns);
     if (op === "add") {
       totalBuyIns.set(target, (totalBuyIns.get(target) ?? 0) + amount);
-    } else if (op === "set" && newBalance > (state.stacks.get(target) ?? 0)) {
-      totalBuyIns.set(target, (totalBuyIns.get(target) ?? 0) + (newBalance - current));
+    } else if (op === "subtract") {
+      totalBuyIns.set(target, Math.max(0, (totalBuyIns.get(target) ?? 0) - amount));
+    } else if (op === "set") {
+      totalBuyIns.set(target, Math.max(0, (totalBuyIns.get(target) ?? 0) + (newBalance - current)));
     }
     s = { ...state, stacks, totalBuyIns };
   }
@@ -831,7 +844,11 @@ function reduceUpdateConfig(state: GameState, configPatch: Partial<RoomConfig>):
       `Invalid config: ${JSON.stringify(parsed.error.issues)}`,
     );
   }
-  return ok({ ...state, config: parsed.data }, []);
+  let shoe = state.shoe;
+  if (state.phase === "lobby" && configPatch.decks && configPatch.decks !== state.config.decks) {
+    shoe = buildShoe(parsed.data.decks, parsed.data.penetration);
+  }
+  return ok({ ...state, config: parsed.data, shoe }, []);
 }
 
 function reduceRebuy(state: GameState, playerId: string): ReducerResult {

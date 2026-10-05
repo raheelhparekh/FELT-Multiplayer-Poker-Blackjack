@@ -197,26 +197,7 @@ export const HeaderBar: React.FC = () => {
           </button>
         )}
 
-        {/* User Account / History Button */}
-        {user ? (
-          <button
-            type="button"
-            onClick={() => setShowHistoryModal(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-gold-400/50 hover:bg-emerald-900/60 text-xs font-bold text-white transition-all shadow"
-            title="View Career Stats & History"
-          >
-            <span>{AVATAR_OPTIONS.find((a) => a.id === user.avatarId)?.emoji ?? "👤"}</span>
-            <span className="hidden sm:inline max-w-[80px] truncate">{user.username}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowAuthModal(true)}
-            className="px-2.5 py-1 rounded-lg bg-gold-400/20 border border-gold-400/60 hover:bg-gold-400 hover:text-black text-xs font-bold text-gold-300 transition-all shadow"
-          >
-            Sign In
-          </button>
-        )}
+        {/* User Account / History Button - Hidden per user request for now */}
 
         {/* Settings Button */}
         <button

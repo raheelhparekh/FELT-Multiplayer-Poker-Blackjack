@@ -29,6 +29,7 @@ export const HostPanelModal: React.FC = () => {
   }
 
   const { participants, stacks, config, dealerId, isPaused } = currentView;
+  const isRoundActive = currentView.phase !== "lobby" && currentView.phase !== "round_summary";
 
   const handleAdjustSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,7 +166,7 @@ export const HostPanelModal: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      {!isDealer && (
+                      {!isDealer && !isRoundActive && (
                         <button
                           type="button"
                           onClick={() => setDealer(p.id)}
@@ -174,7 +175,7 @@ export const HostPanelModal: React.FC = () => {
                           Make Dealer
                         </button>
                       )}
-                      {!isHostPlayer && (
+                      {!isHostPlayer && !isRoundActive && (
                         <button
                           type="button"
                           onClick={() => {
@@ -277,6 +278,69 @@ export const HostPanelModal: React.FC = () => {
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
+                <span className="text-[10px] text-emerald-400 block mb-1">Decks</span>
+                <select
+                  aria-label="Decks"
+                  value={config.decks}
+                  onChange={(e) =>
+                    updateConfig({
+                      decks: Number.parseInt(e.target.value, 10) as 1 | 2 | 4 | 6 | 8,
+                    })
+                  }
+                  className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white"
+                >
+                  {[1, 2, 4, 6, 8].map((d) => (
+                    <option key={d} value={d}>
+                      {d} {d === 1 ? "Deck" : "Decks"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className="text-[10px] text-emerald-400 block mb-1">BJ Payout</span>
+                <select
+                  aria-label="BJ Payout"
+                  value={config.blackjackPayout}
+                  onChange={(e) =>
+                    updateConfig({ blackjackPayout: e.target.value as "3:2" | "6:5" })
+                  }
+                  className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white"
+                >
+                  <option value="3:2">3:2</option>
+                  <option value="6:5">6:5</option>
+                </select>
+              </div>
+
+              <div>
+                <span className="text-[10px] text-emerald-400 block mb-1">Dealer Rule</span>
+                <select
+                  aria-label="Dealer Rule"
+                  value={config.dealerHitsSoft17 ? "H17" : "S17"}
+                  onChange={(e) => updateConfig({ dealerHitsSoft17: e.target.value === "H17" })}
+                  className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white"
+                >
+                  <option value="S17">Stands on 17 (S17)</option>
+                  <option value="H17">Hits Soft 17 (H17)</option>
+                </select>
+              </div>
+
+              <div>
+                <span className="text-[10px] text-emerald-400 block mb-1">Double Down</span>
+                <select
+                  aria-label="Double Down"
+                  value={config.doubleRestriction}
+                  onChange={(e) =>
+                    updateConfig({ doubleRestriction: e.target.value as "9-11" | "any" })
+                  }
+                  className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white"
+                >
+                  <option value="9-11">Hard 9, 10, 11 only</option>
+                  <option value="any">Any initial 2 cards</option>
+                </select>
+              </div>
+
+              <div>
                 <span className="text-[10px] text-emerald-400 block mb-1">Min Bet</span>
                 <input
                   type="number"
@@ -288,6 +352,7 @@ export const HostPanelModal: React.FC = () => {
                   className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white"
                 />
               </div>
+
               <div>
                 <span className="text-[10px] text-emerald-400 block mb-1">Max Bet</span>
                 <input
