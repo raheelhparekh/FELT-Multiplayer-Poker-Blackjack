@@ -75,10 +75,14 @@ export function createInitialState(
 
     betDeadline: null,
     actionDeadline: null,
+    insuranceDeadline: null,
+    pausedRemainingMs: null,
 
     stackHistory: [],
     seq: 0,
     pendingConfig: null,
+    tableStatusMessage: null,
+    waitingForReconnect: null,
   };
 }
 

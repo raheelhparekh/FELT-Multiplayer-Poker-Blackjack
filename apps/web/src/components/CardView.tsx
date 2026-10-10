@@ -56,9 +56,7 @@ export const CardView: React.FC<CardViewProps> = ({
     return (
       <motion.div
         initial={
-          animationSpeed > 0
-            ? { scale: 0.6, opacity: 0, y: -80, x: 25, rotate: -15 }
-            : false
+          animationSpeed > 0 ? { scale: 0.6, opacity: 0, y: -80, x: 25, rotate: -15 } : false
         }
         animate={{
           scale: 1,

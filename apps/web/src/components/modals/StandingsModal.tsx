@@ -1,5 +1,6 @@
 import type { ClientHand, Participant } from "@felt/shared";
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 import { useGameStore } from "../../store/game-store";
 import { AVATAR_OPTIONS } from "../../types/avatars";
 
@@ -36,15 +37,27 @@ export const StandingsModal: React.FC = () => {
   const isRoundSummary = phase === "round_summary";
   const isSessionOver = !isSessionStarted || phase === "lobby";
 
+  const initialBuyIns = currentView.initialBuyIns ?? {};
+  const rebuys = currentView.rebuys ?? {};
+
   // Calculate each participant's accurate stack, buy-in and net PNL
   const participantData = participants.map((p: Participant) => {
     const isDealer = p.id === dealerId;
     const stack = isDealer ? dealerBank : (stacks[p.id] ?? 0);
+    const initial = isDealer
+      ? (dealerTotalBuyIn ?? config.dealerStartingBank)
+      : (initialBuyIns[p.id] ??
+        (totalBuyIns[p.id] !== undefined
+          ? Math.min(totalBuyIns[p.id]!, config.startingStack)
+          : config.startingStack));
+    const extraChips = isDealer
+      ? 0
+      : (rebuys[p.id] ?? Math.max(0, (totalBuyIns[p.id] ?? 0) - initial));
     const buyIn = isDealer
       ? (dealerTotalBuyIn ?? config.dealerStartingBank)
       : (totalBuyIns[p.id] ?? config.startingStack);
     const net = stack - buyIn;
-    return { participant: p, isDealer, stack, buyIn, net };
+    return { participant: p, isDealer, stack, initialBuyIn: initial, extraChips, buyIn, net };
   });
 
   // Sort by net PNL descending (highest profit first)
@@ -126,7 +139,8 @@ export const StandingsModal: React.FC = () => {
                         (sortedData[1]?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
                       }`}
                     >
-                      {(sortedData[1]?.net ?? 0) >= 0 ? "+" : ""}₹{sortedData[1]?.net.toLocaleString()}
+                      {(sortedData[1]?.net ?? 0) >= 0 ? "+" : ""}₹
+                      {sortedData[1]?.net.toLocaleString()}
                     </span>
                   </div>
                   {/* 1st Place */}
@@ -140,7 +154,8 @@ export const StandingsModal: React.FC = () => {
                         (sortedData[0]?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
                       }`}
                     >
-                      {(sortedData[0]?.net ?? 0) >= 0 ? "+" : ""}₹{sortedData[0]?.net.toLocaleString()}
+                      {(sortedData[0]?.net ?? 0) >= 0 ? "+" : ""}₹
+                      {sortedData[0]?.net.toLocaleString()}
                     </span>
                   </div>
                   {/* 3rd Place */}
@@ -155,7 +170,8 @@ export const StandingsModal: React.FC = () => {
                           (sortedData[2]?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
                         }`}
                       >
-                        {(sortedData[2]?.net ?? 0) >= 0 ? "+" : ""}₹{sortedData[2]?.net.toLocaleString()}
+                        {(sortedData[2]?.net ?? 0) >= 0 ? "+" : ""}₹
+                        {sortedData[2]?.net.toLocaleString()}
                       </span>
                     </div>
                   )}
@@ -219,16 +235,18 @@ export const StandingsModal: React.FC = () => {
               <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-2xl overflow-hidden shadow">
                 <div className="grid grid-cols-12 px-3 py-2 bg-black/50 text-[10px] font-bold text-emerald-400 uppercase tracking-wider border-b border-emerald-900/40 items-center">
                   <span className="col-span-1 text-center">#</span>
-                  <span className="col-span-5">Player</span>
-                  <span className="col-span-3 text-right">Balance</span>
-                  <span className="col-span-3 text-right">Net PNL</span>
+                  <span className="col-span-4">Player</span>
+                  <span className="col-span-3 text-right">Buy-in / Extra</span>
+                  <span className="col-span-2 text-right">Balance</span>
+                  <span className="col-span-2 text-right">Net PNL</span>
                 </div>
 
                 <div className="divide-y divide-emerald-900/30">
                   {sortedData.map((item, index: number) => {
-                    const { participant: p, isDealer, stack, net } = item;
+                    const { participant: p, isDealer, stack, buyIn, extraChips, net } = item;
                     const isMe = p.id === myPlayerId;
-                    const avatar = AVATAR_OPTIONS.find((a) => a.id === p.avatarId) ?? AVATAR_OPTIONS[0];
+                    const avatar =
+                      AVATAR_OPTIONS.find((a) => a.id === p.avatarId) ?? AVATAR_OPTIONS[0];
 
                     return (
                       <div
@@ -240,7 +258,7 @@ export const StandingsModal: React.FC = () => {
                         <span className="col-span-1 text-center font-bold text-emerald-500 text-xs">
                           {index + 1}
                         </span>
-                        <div className="col-span-5 flex items-center gap-2 min-w-0 pr-1">
+                        <div className="col-span-4 flex items-center gap-2 min-w-0 pr-1">
                           <span className="text-base shrink-0">{avatar?.emoji ?? "🦁"}</span>
                           <div className="truncate">
                             <div className="flex items-center gap-1">
@@ -278,17 +296,43 @@ export const StandingsModal: React.FC = () => {
                                   Seat {p.seat}
                                 </span>
                               )}
+                              {currentView.pendingChipAdjustmentPlayers?.includes(p.id) && (
+                                <span
+                                  className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 rounded font-bold"
+                                  title="Chip adjustment or rebuy queued for next round"
+                                >
+                                  ADJ PENDING
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
 
-                        <span className="col-span-3 text-right font-mono font-bold text-white text-xs">
+                        {/* Buy-in / Extra Chips */}
+                        <div className="col-span-3 text-right font-mono">
+                          <span className="text-xs font-bold text-white block">
+                            ₹{buyIn.toLocaleString()}
+                          </span>
+                          {extraChips > 0 && (
+                            <span className="text-[9px] text-amber-300/90 font-semibold block">
+                              +₹{extraChips.toLocaleString()} extra
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Current Stack / Balance */}
+                        <span className="col-span-2 text-right font-mono font-bold text-white text-xs">
                           ₹{stack.toLocaleString()}
                         </span>
 
+                        {/* Net PNL */}
                         <span
-                          className={`col-span-3 text-right font-mono font-bold text-xs ${
-                            net > 0 ? "text-emerald-400" : net < 0 ? "text-rose-400" : "text-zinc-400"
+                          className={`col-span-2 text-right font-mono font-bold text-xs ${
+                            net > 0
+                              ? "text-emerald-400"
+                              : net < 0
+                                ? "text-rose-400"
+                                : "text-zinc-400"
                           }`}
                         >
                           {net > 0 ? `+₹${net.toLocaleString()}` : `₹${net.toLocaleString()}`}
@@ -301,7 +345,9 @@ export const StandingsModal: React.FC = () => {
                 {/* Zero-Sum Balance Check Footer */}
                 <div className="px-3 py-2 bg-black/60 border-t border-emerald-900/40 flex items-center justify-between text-[11px] font-mono text-emerald-400/80">
                   <span>Table PNL Balance</span>
-                  <span className={`font-bold ${totalTableNet === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                  <span
+                    className={`font-bold ${totalTableNet === 0 ? "text-emerald-400" : "text-amber-400"}`}
+                  >
                     ₹{totalTableNet.toLocaleString()} (Zero-Sum Verified)
                   </span>
                 </div>
@@ -331,7 +377,9 @@ export const StandingsModal: React.FC = () => {
                 </select>
               </div>
 
-              {transactions.filter((tx) => filterPlayerId === "all" || tx.playerId === filterPlayerId).length === 0 ? (
+              {transactions.filter(
+                (tx) => filterPlayerId === "all" || tx.playerId === filterPlayerId,
+              ).length === 0 ? (
                 <div className="p-8 text-center bg-black/30 border border-emerald-900/40 rounded-2xl text-emerald-500/70 font-mono text-xs">
                   No transactions recorded yet.
                 </div>
@@ -350,33 +398,53 @@ export const StandingsModal: React.FC = () => {
                       .slice()
                       .reverse()
                       .map((tx) => {
+                        const isAdjustment = tx.type === "adjustment";
+                        const isNegative =
+                          tx.type === "round_loss" ||
+                          (isAdjustment &&
+                            (tx.details?.includes("deducted") || tx.details?.includes("subtract")));
                         const isPositive =
-                          tx.type === "buy_in" || tx.type === "rebuy" || tx.type === "round_win";
-                        const isNegative = tx.type === "round_loss";
+                          tx.type === "buy_in" ||
+                          tx.type === "rebuy" ||
+                          tx.type === "round_win" ||
+                          (isAdjustment && !isNegative && tx.amount > 0);
+                        const isChipRequest = tx.type === "chip_request";
 
                         const typeLabel =
                           tx.type === "buy_in"
                             ? "Initial Buy-in"
-                            : tx.type === "rebuy"
-                            ? "Additional Chips"
-                            : tx.type === "round_win"
-                            ? "Round Win"
-                            : tx.type === "round_loss"
-                            ? "Round Loss"
-                            : tx.type === "round_push"
-                            ? "Round Push"
-                            : "Adjustment";
+                            : tx.type === "chip_request"
+                              ? "Chip Request"
+                              : tx.type === "rebuy"
+                                ? "Chips Granted"
+                                : tx.type === "round_win"
+                                  ? "Round Win"
+                                  : tx.type === "round_loss"
+                                    ? "Round Loss"
+                                    : tx.type === "round_push"
+                                      ? "Round Push"
+                                      : isAdjustment
+                                        ? isNegative
+                                          ? "Chips Deducted"
+                                          : "Chips Added (Host)"
+                                        : "Adjustment";
 
                         const typeColor =
                           tx.type === "buy_in"
-                            ? "text-blue-400"
-                            : tx.type === "rebuy"
-                            ? "text-amber-400 font-bold"
-                            : tx.type === "round_win"
-                            ? "text-emerald-400 font-bold"
-                            : tx.type === "round_loss"
-                            ? "text-rose-400"
-                            : "text-zinc-400";
+                            ? "text-blue-400 font-bold"
+                            : tx.type === "chip_request"
+                              ? "text-amber-400 font-bold"
+                              : tx.type === "rebuy"
+                                ? "text-purple-300 font-bold"
+                                : tx.type === "round_win"
+                                  ? "text-emerald-400 font-bold"
+                                  : tx.type === "round_loss"
+                                    ? "text-rose-400"
+                                    : isAdjustment && !isNegative
+                                      ? "text-cyan-300 font-bold"
+                                      : isAdjustment && isNegative
+                                        ? "text-rose-400 font-bold"
+                                        : "text-zinc-400";
 
                         return (
                           <div
@@ -390,9 +458,22 @@ export const StandingsModal: React.FC = () => {
                               {tx.displayName}
                             </span>
                             <div className="col-span-3">
-                              <span className={`text-[11px] block truncate ${typeColor}`}>
-                                {typeLabel}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-[11px] block truncate ${typeColor}`}>
+                                  {typeLabel}
+                                </span>
+                                {isChipRequest && (
+                                  <span
+                                    className={`text-[8px] font-sans px-1 rounded font-bold uppercase tracking-wider ${
+                                      tx.status === "approved"
+                                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                        : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                    }`}
+                                  >
+                                    {tx.status === "approved" ? "Approved" : "Pending"}
+                                  </span>
+                                )}
+                              </div>
                               {tx.details && (
                                 <span className="text-[9px] text-zinc-500 block truncate">
                                   {tx.details}
@@ -402,18 +483,27 @@ export const StandingsModal: React.FC = () => {
                             <div className="col-span-3 text-right">
                               <span
                                 className={`font-bold block ${
-                                  isPositive
-                                    ? "text-emerald-400"
-                                    : isNegative
-                                    ? "text-rose-400"
-                                    : "text-zinc-400"
+                                  isChipRequest
+                                    ? "text-amber-400"
+                                    : isPositive
+                                      ? "text-emerald-400"
+                                      : isNegative
+                                        ? "text-rose-400"
+                                        : "text-zinc-400"
                                 }`}
                               >
-                                {isPositive ? "+" : isNegative ? "-" : ""}₹
-                                {tx.amount.toLocaleString()}
+                                {isChipRequest
+                                  ? `₹${tx.amount.toLocaleString()}`
+                                  : isPositive
+                                    ? `+₹${tx.amount.toLocaleString()}`
+                                    : isNegative
+                                      ? `-₹${tx.amount.toLocaleString()}`
+                                      : `₹${tx.amount.toLocaleString()}`}
                               </span>
                               <span className="text-[10px] text-emerald-500/60 block">
-                                Bal: ₹{tx.balanceAfter.toLocaleString()}
+                                {isChipRequest && tx.status === "pending"
+                                  ? "Req Pending"
+                                  : `Bal: ₹${tx.balanceAfter.toLocaleString()}`}
                               </span>
                             </div>
                           </div>

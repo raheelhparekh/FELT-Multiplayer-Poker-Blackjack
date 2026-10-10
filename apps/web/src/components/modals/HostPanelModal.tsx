@@ -19,10 +19,16 @@ export const HostPanelModal: React.FC = () => {
   const endSession = useGameStore((s) => s.endSession);
   const hostApproveRebuy = useGameStore((s) => s.hostApproveRebuy);
 
+  const forceStand = useGameStore((s) => s.forceStand);
+  const cancelRound = useGameStore((s) => s.cancelRound);
+  const recoverDealer = useGameStore((s) => s.recoverDealer);
+  const closeTable = useGameStore((s) => s.closeTable);
+
   // Chip adjustment local state
   const [selectedTarget, setSelectedTarget] = useState<string>("");
   const [adjustOp, setAdjustOp] = useState<"set" | "add" | "subtract">("add");
   const [adjustAmount, setAdjustAmount] = useState<number>(500);
+  const [newDealerCandidate, setNewDealerCandidate] = useState<string>("");
 
   if (activeModal !== "host" || !currentView || currentView.hostId !== myPlayerId) {
     return null;
@@ -96,6 +102,103 @@ export const HostPanelModal: React.FC = () => {
                 className="py-2.5 px-3 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-rose-200 border border-rose-700/60 font-bold transition-all"
               >
                 ⏹ End Session
+              </button>
+            </div>
+          </div>
+
+          {/* Table Recovery & Host Overrides */}
+          <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold uppercase text-[11px] tracking-wider text-rose-300 flex items-center gap-1.5">
+                <span>🛡️</span> Table Recovery & Host Overrides
+              </h3>
+              <span className="text-[10px] text-rose-400/80 font-mono">Emergency controls</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => forceStand()}
+                disabled={currentView.phase !== "player_turns" || !currentView.activeHandId}
+                className="py-2 px-2.5 rounded-lg bg-amber-900/60 hover:bg-amber-800 disabled:opacity-40 text-amber-200 border border-amber-700/50 font-bold transition-all text-[11px] text-left"
+                title="Advance turn if a player is unresponsive or disconnected"
+              >
+                <span className="block font-bold">⏭ Force Stand Turn</span>
+                <span className="block text-[9px] text-amber-300/70 font-normal">
+                  Unstick stalled hand
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Cancel this round and refund all bets to players?")) {
+                    cancelRound();
+                  }
+                }}
+                disabled={currentView.phase === "lobby"}
+                className="py-2 px-2.5 rounded-lg bg-rose-900/60 hover:bg-rose-800 disabled:opacity-40 text-rose-200 border border-rose-700/50 font-bold transition-all text-[11px] text-left"
+                title="Cancel current round and refund all bets"
+              >
+                <span className="block font-bold">↩ Cancel Round</span>
+                <span className="block text-[9px] text-rose-300/70 font-normal">
+                  Refund all in-play bets
+                </span>
+              </button>
+            </div>
+
+            {/* Dealer Recovery Selector */}
+            <div className="pt-1 border-t border-rose-900/40">
+              <span className="text-[10px] text-rose-300/90 block mb-1">
+                Replace / Recover Dealer (spectator or host):
+              </span>
+              <div className="flex gap-2">
+                <select
+                  aria-label="New Dealer Candidate"
+                  value={newDealerCandidate}
+                  onChange={(e) => setNewDealerCandidate(e.target.value)}
+                  className="flex-1 bg-black/60 border border-rose-800/60 rounded px-2 py-1 text-xs text-white"
+                >
+                  <option value="">Select replacement dealer...</option>
+                  {participants
+                    .filter((p) => p.isConnected && p.seat === null && p.id !== dealerId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.displayName} {p.id === currentView.hostId ? "(Host)" : "(Spectator)"}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!newDealerCandidate}
+                  onClick={() => {
+                    recoverDealer(newDealerCandidate);
+                    setNewDealerCandidate("");
+                  }}
+                  className="px-3 py-1 rounded bg-rose-800 hover:bg-rose-700 disabled:opacity-40 text-white font-bold text-xs transition-all"
+                >
+                  Set Dealer
+                </button>
+              </div>
+            </div>
+
+            {/* Permanent Close Table */}
+            <div className="pt-2 border-t border-rose-900/40">
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Permanently close this table? All players will be disconnected and the room destroyed.",
+                    )
+                  ) {
+                    closeTable();
+                    closeModal();
+                  }
+                }}
+                className="w-full py-1.5 px-3 rounded-lg bg-red-950/80 hover:bg-red-900 text-rose-300 border border-red-700/60 font-bold text-[11px] transition-all text-center"
+              >
+                🚫 Close Table (Remove Room)
               </button>
             </div>
           </div>

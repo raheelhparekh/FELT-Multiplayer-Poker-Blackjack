@@ -20,7 +20,11 @@ export interface TableChoreographyState {
 }
 
 /** Evaluate hand total directly from ClientCard slots (skips hidden/face-down slots). */
-function evalFromSlots(slots: ClientCard[]): { total: number; isBust: boolean; isBlackjack: boolean } {
+function evalFromSlots(slots: ClientCard[]): {
+  total: number;
+  isBust: boolean;
+  isBlackjack: boolean;
+} {
   const cards = slots.flatMap((c) => ("card" in c ? [c.card] : []));
   if (cards.length === 0) return { total: 0, isBust: false, isBlackjack: false };
   const hv = evaluateHand(cards);
@@ -292,8 +296,8 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
         twoCard.isBlackjack ? "Dealer has Blackjack! 🃏" : `Dealer reveals: ${twoCard.total}`,
       );
 
-      const baseFlipPause = Math.round(1000 / speedFactor);   // wait for flip anim
-      const baseDrawPause = Math.round(1100 / speedFactor);   // pause between each hit card
+      const baseFlipPause = Math.round(1000 / speedFactor); // wait for flip anim
+      const baseDrawPause = Math.round(1100 / speedFactor); // pause between each hit card
       const baseResolutionPause = Math.round(800 / speedFactor); // pause after verdict
 
       let cumDelay = baseFlipPause;
@@ -314,9 +318,7 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
             setDealerCardCount(targetCount);
             soundEngine.play("card_deal");
             setStatusMessage(
-              ir.isBust
-                ? `Dealer draws... BUST! 💥 (${ir.total})`
-                : `Dealer draws... ${ir.total}`,
+              ir.isBust ? `Dealer draws... BUST! 💥 (${ir.total})` : `Dealer draws... ${ir.total}`,
             );
           }, cumDelay);
           timersRef.current.push(t);
@@ -373,9 +375,7 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
     }
 
     const holeSlot = cards[1];
-    const isHoleHiddenByServer = Boolean(
-      holeSlot && "hidden" in holeSlot && holeSlot.hidden,
-    );
+    const isHoleHiddenByServer = Boolean(holeSlot && "hidden" in holeSlot && holeSlot.hidden);
 
     // If hole card is revealed (either by choreography animation or by server)
     if (!isHoleHiddenByServer || isHoleCardRevealed) {

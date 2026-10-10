@@ -10,7 +10,13 @@
  */
 
 import type { RoomConfig } from "../types/config.js";
-import type { ClientCard, GamePhase, Hand, Participant, PlayerTransaction } from "../types/index.js";
+import type {
+  ClientCard,
+  GamePhase,
+  Hand,
+  Participant,
+  PlayerTransaction,
+} from "../types/index.js";
 import type { GameState } from "./state.js";
 
 // ─── Public client-facing view types ─────────────────────────────────────────
@@ -42,6 +48,8 @@ export interface ClientGameView {
   activeHandId: string | null;
   betDeadline: number | null;
   actionDeadline: number | null;
+  /** Insurance phase deadline (epoch ms) for client countdown. */
+  insuranceDeadline: number | null;
   /** Who has/hasn't yet responded to insurance (for UI countdown). */
   insurancePending: string[];
   seq: number;
@@ -61,6 +69,21 @@ export interface ClientGameView {
   lockedBets?: Record<string, number> | undefined;
   dealerHoleCardRevealed?: boolean | undefined;
   transactions?: PlayerTransaction[] | undefined;
+  /**
+   * Authoritative table status message from the server.
+   * Clients should display this verbatim; never compute independently.
+   */
+  tableStatusMessage: string | null;
+  /**
+   * Set when host or dealer is in a reconnect grace period.
+   * E.g. "Waiting for host to reconnect"
+   */
+  waitingForReconnect: string | null;
+  /**
+   * playerIds who have queued chip adjustments/rebuys pending for next round.
+   * The client uses this to show a "will apply next round" indicator.
+   */
+  pendingChipAdjustmentPlayers?: string[] | undefined;
 }
 
 // ─── Main filter ─────────────────────────────────────────────────────────────
@@ -84,6 +107,7 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
     activeHandId: state.activeHandId,
     betDeadline: state.betDeadline,
     actionDeadline: state.actionDeadline,
+    insuranceDeadline: state.insuranceDeadline ?? null,
     insurancePending: Array.from(state.insurancePending),
     seq: state.seq,
     stacks: Object.fromEntries(state.stacks),
@@ -100,6 +124,8 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
     pendingBets: Object.fromEntries(state.pendingBets),
     lockedBets: Object.fromEntries(state.lockedBets),
     dealerHoleCardRevealed: Boolean(state.dealerHoleCardRevealed),
+    tableStatusMessage: state.tableStatusMessage ?? null,
+    waitingForReconnect: state.waitingForReconnect ?? null,
     // NOTE: dealerHasBlackjack is deliberately NOT included.
     // NOTE: shoe and pending card identities are deliberately NOT included.
   };
@@ -116,7 +142,8 @@ function isDealerRevealedPhase(phase: GamePhase): boolean {
 }
 
 function isDealerRevealed(state: GameState): boolean {
-  const allBusted = (state.hands?.length ?? 0) > 0 && state.hands!.every((h) => h.result === "bust");
+  const allBusted =
+    (state.hands?.length ?? 0) > 0 && state.hands?.every((h) => h.result === "bust");
   if (allBusted) {
     return false;
   }

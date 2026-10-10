@@ -23,7 +23,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
 
   const user = useAuthStore((s) => s.user);
   const checkAuth = useAuthStore((s) => s.checkAuth);
-  const logout = useAuthStore((s) => s.logout);
+  const _logout = useAuthStore((s) => s.logout);
 
   const [name, setName] = useState(displayName || "");
   const [selectedAvatar, setSelectedAvatar] = useState(avatarId || "lion");
@@ -241,7 +241,10 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
             >
               <span className="flex items-center gap-1.5">
                 <span>⚙</span>
-                <span>Customize Table Rules ({decks} Decks • {dealerHitsSoft17 ? "H17" : "S17"} • ₹{minBet}-₹{maxBet})</span>
+                <span>
+                  Customize Table Rules ({decks} Decks • {dealerHitsSoft17 ? "H17" : "S17"} • ₹
+                  {minBet}-₹{maxBet})
+                </span>
               </span>
               <span>{showTableRules ? "▲" : "▼"}</span>
             </button>

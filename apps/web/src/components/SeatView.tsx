@@ -18,6 +18,7 @@ interface SeatViewProps {
   lockedBet?: number | undefined;
   showOutcomes?: boolean | undefined;
   dealtCardsPerHand?: Record<string, number> | undefined;
+  hasPendingChipAdjustment?: boolean | undefined;
 }
 
 export const SeatView: React.FC<SeatViewProps> = ({
@@ -33,6 +34,7 @@ export const SeatView: React.FC<SeatViewProps> = ({
   lockedBet = 0,
   showOutcomes = true,
   dealtCardsPerHand,
+  hasPendingChipAdjustment = false,
 }) => {
   if (!participant) {
     // Empty seat
@@ -92,7 +94,17 @@ export const SeatView: React.FC<SeatViewProps> = ({
       {/* Stack & Seat Label */}
       <div className="flex items-center justify-between w-full text-[11px] mb-1.5 px-0.5 font-mono">
         <span className="text-emerald-500/70 font-semibold">S{seatNumber}</span>
-        <span className="font-bold text-gold-300">₹{stack.toLocaleString()}</span>
+        <div className="flex items-center gap-1">
+          {hasPendingChipAdjustment && (
+            <span
+              className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 rounded font-bold"
+              title="Chip adjustment or rebuy queued for next round"
+            >
+              ⏳
+            </span>
+          )}
+          <span className="font-bold text-gold-300">₹{stack.toLocaleString()}</span>
+        </div>
       </div>
 
       {/* Hands Area */}
@@ -131,7 +143,9 @@ export const SeatView: React.FC<SeatViewProps> = ({
             const currentHandCards = isInitialDealing
               ? hand.cards.slice(0, dealtCardsPerHand[hand.id])
               : hand.cards;
-            const visibleCards = currentHandCards.flatMap((c: ClientCard) => ("card" in c ? [c.card] : []));
+            const visibleCards = currentHandCards.flatMap((c: ClientCard) =>
+              "card" in c ? [c.card] : [],
+            );
             const evalResult = visibleCards.length > 0 ? evaluateHand(visibleCards) : null;
             const totalBet = hand.bet + hand.doubleBet;
 

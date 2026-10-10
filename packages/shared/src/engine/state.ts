@@ -54,6 +54,20 @@ export interface GameState {
   // ─── Timers (epoch ms; managed by server, stored for reconnect) ───────────
   betDeadline: number | null;
   actionDeadline: number | null;
+  /** Insurance timer deadline (epoch ms). null when not in insurance phase. */
+  insuranceDeadline: number | null;
+
+  // ─── Pause timer storage ───────────────────────────────────────────────────
+  /**
+   * When the game is paused, stores remaining milliseconds for each active timer
+   * so they can be restored accurately when the host resumes.
+   * Null means not paused or no timer was active.
+   */
+  pausedRemainingMs: {
+    bet: number | null;
+    action: number | null;
+    insurance: number | null;
+  } | null;
 
   // ─── History ───────────────────────────────────────────────────────────────
   /** Stack snapshot per player per round, for sparklines (max 200) */
@@ -64,4 +78,18 @@ export interface GameState {
 
   // ─── Pending config change (queued mid-round) ─────────────────────────────
   pendingConfig: Partial<RoomConfig> | null;
+
+  // ─── Table status message (authoritative, derived server-side) ─────────────
+  /**
+   * Human-readable status message for the current table state.
+   * Derived by the server and sent in every snapshot so the client never invents state.
+   */
+  tableStatusMessage: string | null;
+
+  // ─── Disconnect / waiting state ────────────────────────────────────────────
+  /**
+   * Set when host or dealer is in a reconnect grace period.
+   * Displayed to all clients: e.g. "Waiting for host to reconnect (72s remaining)".
+   */
+  waitingForReconnect: string | null;
 }

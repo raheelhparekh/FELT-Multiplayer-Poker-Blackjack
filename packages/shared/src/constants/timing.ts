@@ -32,6 +32,19 @@ export const ROOM = {
   MAX_ACTIVITY_LOG: 200,
   /** Max chat messages kept in memory. */
   MAX_CHAT_LOG: 200,
+  /**
+   * Seconds the game waits for a disconnected host or dealer to reconnect
+   * before auto-transferring host or ending the session.
+   */
+  HOST_DEALER_GRACE_SECONDS: 90,
+  /**
+   * Seconds the game auto-stands an active player who disconnects while the
+   * action timer is DISABLED. When the timer is enabled, the normal timer
+   * deadline is used instead.
+   */
+  DISCONNECT_GRACE_SECONDS: 20,
+  /** Snapshot schema version — increment when serialized shape changes. */
+  SNAPSHOT_VERSION: 1,
 } as const;
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────

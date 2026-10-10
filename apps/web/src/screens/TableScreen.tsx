@@ -107,9 +107,7 @@ export const TableScreen: React.FC = () => {
               dealerBank={dealerBank ?? 0}
               phase={phase}
               isDealerOrHost={isDealerOrHost}
-              canDeal={
-                phase === "betting" && Object.keys(currentView.lockedBets ?? {}).length > 0
-              }
+              canDeal={phase === "betting" && Object.keys(currentView.lockedBets ?? {}).length > 0}
               dealerDrawMode={config.dealerDrawMode}
               onDeal={dealerDeal}
               onReveal={dealerReveal}
@@ -121,6 +119,36 @@ export const TableScreen: React.FC = () => {
               isFlippingHole={choreography.isFlippingHole}
             />
           </div>
+
+          {/* Table Paused / Waiting for Reconnect / Status Message Banner */}
+          {(currentView.isPaused ||
+            currentView.waitingForReconnect ||
+            currentView.tableStatusMessage) && (
+            <div className="relative z-20 mx-auto mb-2 flex flex-wrap items-center justify-center gap-2 bg-amber-950/90 border border-amber-500/80 px-4 py-2 rounded-2xl text-xs text-amber-100 shadow-xl backdrop-blur max-w-lg text-center animate-fade-in">
+              <span className="text-base shrink-0">⏸</span>
+              <div className="flex-1 min-w-[200px]">
+                <span className="font-bold block text-amber-300">
+                  {currentView.waitingForReconnect ||
+                    currentView.tableStatusMessage ||
+                    "Game Paused"}
+                </span>
+                {currentView.isPaused && (
+                  <span className="text-[10px] text-amber-200/80 block">
+                    All action and turn timers are frozen.
+                  </span>
+                )}
+              </div>
+              {myPlayerId === hostId && currentView.isPaused && (
+                <button
+                  type="button"
+                  onClick={() => useGameStore.getState().resume()}
+                  className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition-transform active:scale-95 shrink-0"
+                >
+                  ▶ Resume
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Rebuy Alert Banner if Stack Low */}
           {canRebuy && (
@@ -144,6 +172,9 @@ export const TableScreen: React.FC = () => {
                 const occupant = participants.find((p) => p.seat === seatNum);
                 const seatHands = hands.filter((h) => h.seatNumber === seatNum);
                 const occupantStack = occupant ? (stacks[occupant.id] ?? 0) : 0;
+                const hasPendingChipAdjustment = occupant
+                  ? (currentView.pendingChipAdjustmentPlayers?.includes(occupant.id) ?? false)
+                  : false;
 
                 return (
                   <SeatView
@@ -160,6 +191,7 @@ export const TableScreen: React.FC = () => {
                     lockedBet={occupant ? (currentView.lockedBets?.[occupant.id] ?? 0) : 0}
                     showOutcomes={choreography.showOutcomes}
                     dealtCardsPerHand={choreography.dealtCardsPerHand}
+                    hasPendingChipAdjustment={hasPendingChipAdjustment}
                   />
                 );
               })}
@@ -180,6 +212,11 @@ export const TableScreen: React.FC = () => {
                     lockedBet={myPlayerId ? (currentView.lockedBets?.[myPlayerId] ?? 0) : 0}
                     showOutcomes={choreography.showOutcomes}
                     dealtCardsPerHand={choreography.dealtCardsPerHand}
+                    hasPendingChipAdjustment={
+                      myPlayerId
+                        ? (currentView.pendingChipAdjustmentPlayers?.includes(myPlayerId) ?? false)
+                        : false
+                    }
                   />
                 </div>
               </div>

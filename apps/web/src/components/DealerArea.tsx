@@ -82,12 +82,7 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
                   "card" in slot ? `${slot.card.suit}-${slot.card.rank}-${idx}` : `hidden-${idx}`;
                 const isFlipping = isFlippingHole && idx === 1;
                 return (
-                  <CardView
-                    key={key}
-                    cardSlot={slot}
-                    dealIndex={idx}
-                    isFlipping={isFlipping}
-                  />
+                  <CardView key={key} cardSlot={slot} dealIndex={idx} isFlipping={isFlipping} />
                 );
               })}
             </div>
@@ -153,39 +148,39 @@ export const DealerArea: React.FC<DealerAreaProps> = ({
             </div>
           )}
 
-          {phase === "dealer_turn" && dealerDrawMode === "manual" && (
-            <>
-              {hasHiddenCard ? (
-                <button
-                  type="button"
-                  onClick={onReveal}
-                  className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95"
-                >
-                  Reveal Hole Card
-                </button>
-              ) : evalResult && evalResult.total < 17 ? (
-                <button
-                  type="button"
-                  onClick={onDraw}
-                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
-                >
-                  <span>Draw Card</span>
-                  <span className="text-[10px] opacity-80 font-mono">({evalResult.total} &lt; 17)</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onDraw}
-                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
-                >
-                  <span>Stand / Settle →</span>
-                  {evalResult && (
-                    <span className="text-[10px] opacity-80 font-mono">({evalResult.total})</span>
-                  )}
-                </button>
-              )}
-            </>
-          )}
+          {phase === "dealer_turn" &&
+            dealerDrawMode === "manual" &&
+            (hasHiddenCard ? (
+              <button
+                type="button"
+                onClick={onReveal}
+                className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95"
+              >
+                Reveal Hole Card
+              </button>
+            ) : evalResult && evalResult.total < 17 ? (
+              <button
+                type="button"
+                onClick={onDraw}
+                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
+              >
+                <span>Draw Card</span>
+                <span className="text-[10px] opacity-80 font-mono">
+                  ({evalResult.total} &lt; 17)
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onDraw}
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-md transition-transform active:scale-95 flex items-center gap-1.5"
+              >
+                <span>Stand / Settle →</span>
+                {evalResult && (
+                  <span className="text-[10px] opacity-80 font-mono">({evalResult.total})</span>
+                )}
+              </button>
+            ))}
 
           {phase === "round_summary" && (
             <button

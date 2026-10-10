@@ -24,6 +24,7 @@ export class TestClient {
   public receivedChats: ChatMessage[] = [];
   public receivedErrors: ServerError[] = [];
   public presenceUpdates: Array<{ playerId: string; isConnected: boolean }> = [];
+  public receivedNotifications: import("@felt/shared").TableNotification[] = [];
 
   constructor(public readonly name: string) {}
 
@@ -58,6 +59,10 @@ export class TestClient {
 
       this.socket.on("chat", (payload: { type: string; message: ChatMessage }) => {
         this.receivedChats.push(payload.message);
+      });
+
+      this.socket.on("table:notification", (notif: import("@felt/shared").TableNotification) => {
+        this.receivedNotifications.push(notif);
       });
 
       this.socket.on("error", (err: ServerError) => {
@@ -203,6 +208,22 @@ export class TestClient {
     return this.emitIntent("host:adjustChips", { target, op, amount });
   }
 
+  public forceStandActiveHand(): Promise<void> {
+    return this.emitIntent("host:forceStand");
+  }
+
+  public cancelRoundRefund(): Promise<void> {
+    return this.emitIntent("host:cancelRound");
+  }
+
+  public recoverDealer(newDealerId: string): Promise<void> {
+    return this.emitIntent("host:recoverDealer", { newDealerId });
+  }
+
+  public closeTable(): Promise<void> {
+    return this.emitIntent("host:closeTable");
+  }
+
   public updateConfig(config: Partial<RoomConfig>): Promise<void> {
     return this.emitIntent("host:updateConfig", { config });
   }
@@ -263,12 +284,12 @@ export class TestClient {
     return this.emitIntent("play:insurance", { handId, accept });
   }
 
-  public rebuyRequest(): Promise<void> {
-    return this.emitIntent("rebuy:request");
+  public rebuyRequest(amount?: number): Promise<void> {
+    return this.emitIntent("rebuy:request", { amount });
   }
 
-  public hostApproveRebuy(targetId: string): Promise<void> {
-    return this.emitIntent("host:approveRebuy", { targetId });
+  public hostApproveRebuy(targetId: string, amount?: number): Promise<void> {
+    return this.emitIntent("host:approveRebuy", { targetId, amount });
   }
 
   public sendChat(text: string): Promise<void> {

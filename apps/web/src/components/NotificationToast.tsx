@@ -8,7 +8,10 @@ export const NotificationToast: React.FC = () => {
   const myPlayerId = useGameStore((s) => s.myPlayerId);
   const hostApproveRebuy = useGameStore((s) => s.hostApproveRebuy);
 
+  const [approving, setApproving] = React.useState(false);
+
   useEffect(() => {
+    setApproving(false);
     if (!notification) return;
     const timer = setTimeout(() => {
       dismiss();
@@ -20,10 +23,13 @@ export const NotificationToast: React.FC = () => {
 
   const isHost = Boolean(myPlayerId && currentView?.hostId === myPlayerId);
   const isDealer = Boolean(myPlayerId && currentView?.dealerId === myPlayerId);
-  const canApprove = (isHost || isDealer) && notification.type === "chip_request" && notification.playerId;
+  const canApprove =
+    (isHost || isDealer) && notification.type === "chip_request" && notification.playerId;
 
   const handleApprove = () => {
+    if (approving) return;
     if (notification.playerId) {
+      setApproving(true);
       hostApproveRebuy(notification.playerId, notification.amount);
       dismiss();
     }
@@ -41,7 +47,12 @@ export const NotificationToast: React.FC = () => {
         maxWidth: "460px",
         backgroundColor: "rgba(17, 24, 39, 0.96)",
         backdropFilter: "blur(12px)",
-        border: notification.type === "chip_approved" ? "1px solid #10b981" : "1px solid #f59e0b",
+        border:
+          notification.type === "chip_approved"
+            ? "1px solid #10b981"
+            : notification.type === "info"
+              ? "1px solid #3b82f6"
+              : "1px solid #f59e0b",
         borderRadius: "12px",
         boxShadow: "0 10px 30px rgba(0,0,0,0.5), 0 0 15px rgba(245, 158, 11, 0.2)",
         padding: "16px 20px",
@@ -49,14 +60,40 @@ export const NotificationToast: React.FC = () => {
         animation: "slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "22px" }}>
-            {notification.type === "chip_approved" ? "💰" : "🪙"}
+            {notification.type === "chip_approved"
+              ? "💰"
+              : notification.type === "info"
+                ? "ℹ️"
+                : "🪙"}
           </span>
           <div>
-            <div style={{ fontWeight: 600, fontSize: "14px", color: notification.type === "chip_approved" ? "#34d399" : "#fbbf24" }}>
-              {notification.type === "chip_approved" ? "Chips Added" : "Chip Request"}
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: "14px",
+                color:
+                  notification.type === "chip_approved"
+                    ? "#34d399"
+                    : notification.type === "info"
+                      ? "#60a5fa"
+                      : "#fbbf24",
+              }}
+            >
+              {notification.type === "chip_approved"
+                ? "Chips Added"
+                : notification.type === "info"
+                  ? "Table Notice"
+                  : "Chip Request"}
             </div>
             <div style={{ fontSize: "13px", color: "#e5e7eb", marginTop: "2px" }}>
               {notification.message}
@@ -64,6 +101,7 @@ export const NotificationToast: React.FC = () => {
           </div>
         </div>
         <button
+          type="button"
           onClick={dismiss}
           style={{
             background: "none",
@@ -83,6 +121,7 @@ export const NotificationToast: React.FC = () => {
       {canApprove && (
         <div style={{ marginTop: "12px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <button
+            type="button"
             onClick={dismiss}
             style={{
               padding: "6px 12px",
@@ -97,7 +136,9 @@ export const NotificationToast: React.FC = () => {
             Ignore
           </button>
           <button
+            type="button"
             onClick={handleApprove}
+            disabled={approving}
             style={{
               padding: "6px 14px",
               borderRadius: "6px",
@@ -106,11 +147,12 @@ export const NotificationToast: React.FC = () => {
               fontWeight: 600,
               border: "none",
               fontSize: "12px",
-              cursor: "pointer",
+              cursor: approving ? "not-allowed" : "pointer",
+              opacity: approving ? 0.6 : 1,
               boxShadow: "0 2px 8px rgba(245, 158, 11, 0.4)",
             }}
           >
-            Approve {notification.amount?.toLocaleString()} Chips
+            {approving ? "Approving..." : `Approve ${notification.amount?.toLocaleString()} Chips`}
           </button>
         </div>
       )}

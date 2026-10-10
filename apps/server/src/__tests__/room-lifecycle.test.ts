@@ -90,14 +90,18 @@ describe("Room Lifecycle & Presence Integration", () => {
     const snapAfterCharlie = await player2.waitForSnapshot(
       (s) => s.participants.find((p: Participant) => p.id === player2.playerId)?.seat === 2,
     );
-    expect(snapAfterCharlie.participants.find((p: Participant) => p.id === player2.playerId)?.seat).toBe(2);
+    expect(
+      snapAfterCharlie.participants.find((p: Participant) => p.id === player2.playerId)?.seat,
+    ).toBe(2);
 
     // Bob stands up
     await player1.stand();
     const snapAfterStand = await player1.waitForSnapshot(
       (s) => s.participants.find((p: Participant) => p.id === player1.playerId)?.seat === null,
     );
-    expect(snapAfterStand.participants.find((p: Participant) => p.id === player1.playerId)?.seat).toBeNull();
+    expect(
+      snapAfterStand.participants.find((p: Participant) => p.id === player1.playerId)?.seat,
+    ).toBeNull();
 
     host.disconnect();
     player1.disconnect();
@@ -190,7 +194,9 @@ describe("Room Lifecycle & Presence Integration", () => {
     const reconnectedSnap = await reconnectedPlayer.waitForSnapshot(
       (s) => s.participants.find((p: Participant) => p.id === participant.id)?.isConnected === true,
     );
-    expect(reconnectedSnap.participants.find((p: Participant) => p.id === participant.id)?.seat).toBe(3);
+    expect(
+      reconnectedSnap.participants.find((p: Participant) => p.id === participant.id)?.seat,
+    ).toBe(3);
 
     host.disconnect();
     reconnectedPlayer.disconnect();

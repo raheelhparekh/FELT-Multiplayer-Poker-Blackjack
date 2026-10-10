@@ -19,7 +19,7 @@ export const BaseRoomConfigSchema = z.object({
   dealerStartingBank: z.number().int().positive().default(50000),
   rebuyEnabled: z.boolean().default(true),
   rebuyAmount: z.number().int().positive().default(5000),
-  rebuyRequiresHostApproval: z.boolean().default(false),
+  rebuyRequiresHostApproval: z.boolean().default(true),
   betTimerSec: z.number().int().positive().nullable().default(30),
   actionTimerSec: z.number().int().positive().nullable().default(30),
   dealerDrawMode: z.enum(["auto", "manual"]).default("auto"),

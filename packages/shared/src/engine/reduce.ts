@@ -809,23 +809,28 @@ function reduceAdjustChips(
       dealerTotalBuyIn += amount;
     } else if (op === "subtract") {
       dealerTotalBuyIn = Math.max(0, dealerTotalBuyIn - amount);
-    } else if (op === "set") {
-      dealerTotalBuyIn = Math.max(0, dealerTotalBuyIn + (newBalance - current));
+    } else if (op === "set" && newBalance > current) {
+      dealerTotalBuyIn += newBalance - current;
     }
     s = { ...state, dealerBank: newBalance, dealerTotalBuyIn };
   } else {
     const stacks = new Map(state.stacks);
     stacks.set(target, newBalance);
-    // Also update totalBuyIn proportionally when adjusting chips so net PNL reflects true gameplay profit/loss
+    // Also update totalBuyIn and rebuys when adding chips or setting higher stack so net PNL reflects true gameplay profit/loss
     const totalBuyIns = new Map(state.totalBuyIns);
+    const rebuys = new Map(state.rebuys ?? []);
     if (op === "add") {
       totalBuyIns.set(target, (totalBuyIns.get(target) ?? 0) + amount);
+      rebuys.set(target, (rebuys.get(target) ?? 0) + amount);
     } else if (op === "subtract") {
       totalBuyIns.set(target, Math.max(0, (totalBuyIns.get(target) ?? 0) - amount));
-    } else if (op === "set") {
-      totalBuyIns.set(target, Math.max(0, (totalBuyIns.get(target) ?? 0) + (newBalance - current)));
+      rebuys.set(target, Math.max(0, (rebuys.get(target) ?? 0) - amount));
+    } else if (op === "set" && newBalance > current) {
+      const diff = newBalance - current;
+      totalBuyIns.set(target, (totalBuyIns.get(target) ?? 0) + diff);
+      rebuys.set(target, (rebuys.get(target) ?? 0) + diff);
     }
-    s = { ...state, stacks, totalBuyIns };
+    s = { ...state, stacks, totalBuyIns, rebuys };
   }
 
   return ok(s, [{ type: "chipsAdjusted", target, op, amount, newBalance }]);

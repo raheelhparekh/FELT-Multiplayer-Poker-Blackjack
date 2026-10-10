@@ -90,6 +90,17 @@ describe("Roles, Gameplay & Hidden Info Audit", () => {
       ),
     );
 
+    // If dealer upcard is Ace, decline insurance to advance
+    if (p1.latestSnapshot?.phase === "insurance") {
+      for (const client of [p1, p2, p3]) {
+        const hand = p1.latestSnapshot?.hands.find((h) => h.playerId === client.playerId);
+        if (hand) {
+          await client.playInsurance(hand.id, false);
+        }
+      }
+      await p1.waitForSnapshot((s) => s.phase === "player_turns" || s.phase === "round_summary");
+    }
+
     // HIDDEN INFO CHECK 1: Before hole card is revealed, hole card must be hidden for EVERYONE
     // including the dealer and spectators!
     if (p1.latestSnapshot?.phase === "player_turns") {
@@ -289,7 +300,7 @@ describe("Roles, Gameplay & Hidden Info Audit", () => {
     dealer.disconnect();
   });
 
-  it("automatically ends game and returns players to lobby when dealer leaves or disconnects", async () => {
+  it("pauses game and waits for reconnect when dealer leaves or disconnects", async () => {
     const host = new TestClient("Host");
     const dealer = new TestClient("Dealer");
     const player = new TestClient("Player");
@@ -318,18 +329,19 @@ describe("Roles, Gameplay & Hidden Info Audit", () => {
     // Dealer disconnects/leaves mid-game
     dealer.disconnect();
 
-    // Remaining player and host should receive snapshot transitioning back to lobby
-    const lobbyView = await player.waitForSnapshot(
-      (s) => s.phase === "lobby" && !s.isSessionStarted,
+    // Remaining player and host should receive snapshot with isPaused: true and waiting message
+    const pausedView = await player.waitForSnapshot(
+      (s) => s.isPaused && s.waitingForReconnect !== null,
     );
-    expect(lobbyView.phase).toBe("lobby");
-    expect(lobbyView.isSessionStarted).toBe(false);
+    expect(pausedView.isPaused).toBe(true);
+    expect(pausedView.isSessionStarted).toBe(true);
+    expect(pausedView.waitingForReconnect).toMatch(/Dealer/);
 
     host.disconnect();
     player.disconnect();
   });
 
-  it("automatically ends game and returns players to lobby when host leaves or disconnects", async () => {
+  it("pauses game and enters grace period when host leaves or disconnects", async () => {
     const host = new TestClient("Host");
     const player = new TestClient("Player");
 
@@ -354,13 +366,13 @@ describe("Roles, Gameplay & Hidden Info Audit", () => {
     // Host disconnects/leaves mid-game
     host.disconnect();
 
-    // Remaining player should see session ended, phase reset to lobby, and host transferred
-    const lobbyView = await player.waitForSnapshot(
-      (s) => s.phase === "lobby" && !s.isSessionStarted && s.hostId === player.playerId,
+    // Remaining player should see table paused with grace period, session not wiped immediately
+    const pausedView = await player.waitForSnapshot(
+      (s) => s.isPaused && s.waitingForReconnect !== null,
     );
-    expect(lobbyView.phase).toBe("lobby");
-    expect(lobbyView.isSessionStarted).toBe(false);
-    expect(lobbyView.hostId).toBe(player.playerId);
+    expect(pausedView.isPaused).toBe(true);
+    expect(pausedView.isSessionStarted).toBe(true);
+    expect(pausedView.waitingForReconnect).toMatch(/Host/);
 
     player.disconnect();
   });

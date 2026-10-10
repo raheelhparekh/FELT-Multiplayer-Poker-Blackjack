@@ -1,4 +1,4 @@
-import React, { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -42,7 +42,8 @@ export class ErrorBoundary extends Component<Props, State> {
             Table State Desynchronized
           </h2>
           <p className="text-xs text-emerald-400/80 max-w-md mb-6 leading-relaxed">
-            The table interface encountered a temporary synchronization glitch. Reconnecting will restore your cards, stack, and active game session.
+            The table interface encountered a temporary synchronization glitch. Reconnecting will
+            restore your cards, stack, and active game session.
           </p>
           <div className="flex items-center gap-3">
             <button

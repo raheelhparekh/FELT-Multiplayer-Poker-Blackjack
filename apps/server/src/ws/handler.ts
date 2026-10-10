@@ -121,7 +121,21 @@ export function setupSocketIO(
         try {
           const room = roomManager.getRoom(data.code);
           if (!room) {
-            throw new EngineError("ILLEGAL_ACTION", `Room '${data.code}' not found`);
+            // Clear stored room/token so client shows a clean error
+            socket.emit("room:not_found", {
+              type: "room:not_found",
+              code: data.code?.toUpperCase(),
+              message: "This table has closed or expired. Ask the host for a new invite.",
+            });
+            if (ack)
+              ack({
+                ok: false,
+                error: {
+                  code: "ROOM_NOT_FOUND",
+                  message: "This table has closed or expired. Ask the host for a new invite.",
+                },
+              });
+            return;
           }
 
           const userId = data.userToken ? verifyToken(data.userToken)?.userId : undefined;
@@ -377,6 +391,62 @@ export function setupSocketIO(
       },
     );
 
+    // ─── Host Recovery Controls ───────────────────────────────────────────────
+
+    socket.on(
+      "host:forceStand",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.forceStandActiveHand(playerId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "host:cancelRound",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.cancelRoundRefund(playerId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "host:recoverDealer",
+      (data: { newDealerId: string; actionId?: string }, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.recoverDealer(playerId, data.newDealerId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "host:closeTable",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          if (ack) ack({ ok: true });
+          room.closeTable(playerId);
+          socket.data.roomCode = undefined;
+          socket.data.playerId = undefined;
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
     // ─── Betting Actions ─────────────────────────────────────────────────────
 
     socket.on(
@@ -622,10 +692,7 @@ export function setupSocketIO(
 
     socket.on(
       "rebuy:request",
-      (
-        data: { amount?: number; actionId?: string } | undefined,
-        ack?: (res: unknown) => void,
-      ) => {
+      (data: { amount?: number; actionId?: string } | undefined, ack?: (res: unknown) => void) => {
         try {
           const { room, playerId } = getRoomAndPlayer();
           room.dispatch(

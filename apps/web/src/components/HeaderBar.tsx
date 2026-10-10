@@ -2,7 +2,6 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/auth-store";
 import { useGameStore } from "../store/game-store";
-import { AVATAR_OPTIONS } from "../types/avatars";
 import { AuthModal } from "./modals/AuthModal";
 import { HistoryModal } from "./modals/HistoryModal";
 
@@ -17,7 +16,7 @@ export const HeaderBar: React.FC = () => {
   const errorMessage = useGameStore((s) => s.errorMessage);
   const clearError = useGameStore((s) => s.clearError);
 
-  const user = useAuthStore((s) => s.user);
+  const _user = useAuthStore((s) => s.user);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 

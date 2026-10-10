@@ -37,7 +37,8 @@ export const RebuyModal: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-white">Request More Chips</h2>
           <p className="text-xs text-emerald-400/80 mt-1">
-            Current Stack: <span className="font-bold text-white font-mono">₹{stack.toLocaleString()}</span>
+            Current Stack:{" "}
+            <span className="font-bold text-white font-mono">₹{stack.toLocaleString()}</span>
           </p>
         </div>
 

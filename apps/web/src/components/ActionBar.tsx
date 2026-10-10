@@ -114,7 +114,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
     const myStack = view.stacks[myPlayerId] ?? 0;
     const lockedAmount = view.lockedBets?.[myPlayerId] ?? 0;
-    const isLocked = Boolean(view.lockedBets && view.lockedBets[myPlayerId]);
+    const isLocked = Boolean(view.lockedBets?.[myPlayerId]);
 
     if (isLocked) {
       return (
@@ -230,7 +230,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     }
 
     if (!isMyTurn || !activeHand) {
-      const activePlayer = view.participants.find((p: Participant) => p.id === activeHand?.playerId);
+      const activePlayer = view.participants.find(
+        (p: Participant) => p.id === activeHand?.playerId,
+      );
       const activeName = activePlayer ? activePlayer.displayName : "player";
 
       return (

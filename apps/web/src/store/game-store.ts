@@ -54,6 +54,10 @@ export interface GameStoreState {
   pause: () => void;
   resume: () => void;
   endSession: () => void;
+  forceStand: () => void;
+  cancelRound: () => void;
+  recoverDealer: (newDealerId: string) => void;
+  closeTable: () => void;
 
   // Betting actions
   betAdd: (amount: number) => void;
@@ -154,7 +158,9 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       }) => {
         set((state) => {
           const prevView = state.currentView;
-          const wasSessionStarted = Boolean(prevView?.isSessionStarted && prevView?.phase !== "lobby");
+          const wasSessionStarted = Boolean(
+            prevView?.isSessionStarted && prevView?.phase !== "lobby",
+          );
           const isSessionEnded = Boolean(
             wasSessionStarted && !payload.data.isSessionStarted && payload.data.phase === "lobby",
           );
@@ -201,6 +207,20 @@ export const useGameStore = create<GameStoreState>((set, get) => {
 
     socket.on("table:notification", (notif: TableNotification) => {
       set({ tableNotification: notif });
+    });
+
+    socket.on("room:closed", (payload: { reason?: string }) => {
+      localStorage.removeItem(STORAGE_KEYS.ROOM);
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      set({
+        roomCode: null,
+        token: null,
+        myPlayerId: null,
+        currentView: null,
+        activeModal: null,
+        tableNotification: null,
+        errorMessage: payload?.reason || "This table has been closed by the host.",
+      });
     });
 
     socket.on("error", (err: ServerError) => {
@@ -419,6 +439,26 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     endSession: () => {
       const socket = ensureSocket();
       socket.emit("host:endSession");
+    },
+
+    forceStand: () => {
+      const socket = ensureSocket();
+      socket.emit("host:forceStand");
+    },
+
+    cancelRound: () => {
+      const socket = ensureSocket();
+      socket.emit("host:cancelRound");
+    },
+
+    recoverDealer: (newDealerId: string) => {
+      const socket = ensureSocket();
+      socket.emit("host:recoverDealer", { newDealerId });
+    },
+
+    closeTable: () => {
+      const socket = ensureSocket();
+      socket.emit("host:closeTable");
     },
 
     // Betting actions

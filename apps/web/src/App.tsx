@@ -1,11 +1,11 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { NotificationToast } from "./components/NotificationToast";
 import { LandingScreen } from "./screens/LandingScreen";
 import { LobbyScreen } from "./screens/LobbyScreen";
 import { TableScreen } from "./screens/TableScreen";
-import { ErrorBoundary } from "./components/ErrorBoundary";
-import { NotificationToast } from "./components/NotificationToast";
 import { useGameStore } from "./store/game-store";
 
 const RoomRoute: React.FC = () => {
@@ -33,13 +33,27 @@ const RoomRoute: React.FC = () => {
     }
 
     // Only auto-join if we have an existing session token for this room OR an existing profile
-    if ((!currentView || storeRoomCode !== cleanCode) && !attemptedJoin && (hasTokenForRoom || hasSavedProfile)) {
+    if (
+      (!currentView || storeRoomCode !== cleanCode) &&
+      !attemptedJoin &&
+      (hasTokenForRoom || hasSavedProfile)
+    ) {
       setAttemptedJoin(true);
       joinRoom(cleanCode).catch(() => {
         // Handled via store errorMessage
       });
     }
-  }, [roomCode, currentView, storeRoomCode, attemptedJoin, joinRoom, navigate, cleanCode, hasTokenForRoom, hasSavedProfile]);
+  }, [
+    roomCode,
+    currentView,
+    storeRoomCode,
+    attemptedJoin,
+    joinRoom,
+    navigate,
+    cleanCode,
+    hasTokenForRoom,
+    hasSavedProfile,
+  ]);
 
   // If left room, navigate back to landing
   useEffect(() => {

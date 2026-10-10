@@ -19,7 +19,6 @@ import {
   PartialRoomConfigSchema,
   ROOM,
   TIMING,
-  bjWinAmount,
   createInitialState,
   defaultRoomConfig,
   reduce,
@@ -32,6 +31,28 @@ import { createGuestToken, verifyGuestToken } from "../auth/token.js";
 
 import { dbService } from "../db/index.js";
 import type { NewSessionPlayerResult } from "../db/schema.js";
+
+// ─── Active phases where chips cannot be altered immediately ─────────────────
+
+const ACTIVE_PHASES: GamePhase[] = [
+  "dealing",
+  "insurance",
+  "peek",
+  "player_turns",
+  "dealer_turn",
+  "settlement",
+];
+
+// ─── Queued chip action ───────────────────────────────────────────────────────
+
+interface QueuedChipAction {
+  type: "adjustment" | "rebuy";
+  target: string; // playerId or "dealer"
+  op?: "set" | "add" | "subtract";
+  amount: number;
+  displayName: string;
+  requestedAt: number;
+}
 
 export interface RoomOptions {
   roomCode: string;
@@ -73,12 +94,19 @@ export class Room {
   private chatRateLimits = new Map<string, number[]>(); // playerId → timestamps
   private actionDeduplication = new Map<string, { timestamp: number; result?: unknown }>();
 
-  // Timers
+  // ─── Queued chip actions (applied at round_summary / next betting phase) ──
+  private queuedChipActions: QueuedChipAction[] = [];
+
+  // ─── Timers ────────────────────────────────────────────────────────────────
   private betTimer: NodeJS.Timeout | null = null;
   private actionTimer: NodeJS.Timeout | null = null;
   private insuranceTimer: NodeJS.Timeout | null = null;
   private seatHoldTimers = new Map<string, NodeJS.Timeout>();
   private emptyRoomTimer: NodeJS.Timeout | null = null;
+  // Grace timer for host/dealer disconnect (90s)
+  private hostDealerGraceTimer: NodeJS.Timeout | null = null;
+  // Per-player grace timer for active-hand disconnect (20s, timers-disabled mode only)
+  private disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
 
   private onEmptyRoomDestroy?: ((code: string) => void) | undefined;
   public isDestroyed = false;
@@ -128,7 +156,9 @@ export class Room {
     const existingByName = Array.from(this.participants.values()).find(
       (p) =>
         !p.isConnected &&
-        (params.userId ? p.userId === params.userId : p.displayName.trim().toLowerCase() === trimmedName),
+        (params.userId
+          ? p.userId === params.userId
+          : p.displayName.trim().toLowerCase() === trimmedName),
     );
     if (existingByName) {
       if (this.bannedPlayerIds.has(existingByName.id)) {
@@ -279,6 +309,14 @@ export class Room {
       this.seatHoldTimers.delete(playerId);
     }
 
+    // Cancel per-player disconnect grace timer if running
+    const graceTmr = this.disconnectGraceTimers.get(playerId);
+    if (graceTmr) {
+      clearTimeout(graceTmr);
+      this.disconnectGraceTimers.delete(playerId);
+      this.addActivity(`${existing.displayName} reconnected before auto-stand`);
+    }
+
     this.cancelEmptyRoomTimer();
 
     // Update in engine state
@@ -286,7 +324,21 @@ export class Room {
     stateParticipants.set(playerId, existing);
     this.state = { ...this.state, participants: stateParticipants };
 
-    this.addActivity(`${existing.displayName} reconnected`);
+    // If this reconnect resolves a host/dealer grace period, clear it
+    const isReturningHost = playerId === this.hostId;
+    const isReturningDealer = playerId === this.dealerId;
+    if ((isReturningHost || isReturningDealer) && this.hostDealerGraceTimer) {
+      clearTimeout(this.hostDealerGraceTimer);
+      this.hostDealerGraceTimer = null;
+      // Clear the waiting message
+      this.state = { ...this.state, waitingForReconnect: null };
+      this.addActivity(
+        `${existing.displayName} (${isReturningHost && isReturningDealer ? "Host & Dealer" : isReturningHost ? "Host" : "Dealer"}) reconnected — game still paused, resume when ready`,
+      );
+    } else {
+      this.addActivity(`${existing.displayName} reconnected`);
+    }
+
     this.broadcastPresence(playerId, true);
     this.broadcastSnapshot();
 
@@ -317,35 +369,54 @@ export class Room {
     const wasDealer = playerId === this.dealerId;
     const isGameActive = this.state.isSessionStarted || this.state.phase !== "lobby";
 
-    // If the dealer or host leaves or exits during an active game session,
-    // automatically end the game and return all players to the lobby.
     if ((wasHost || wasDealer) && isGameActive) {
+      // ── New behavior: grace period instead of immediate session end ─────
       const roleStr = wasHost && wasDealer ? "Host & Dealer" : wasHost ? "Host" : "Dealer";
-      this.endSessionInternal(
-        `${participant.displayName} (${roleStr}) left the game - session ended, returning to lobby`,
+      this.addActivity(
+        `${participant.displayName} (${roleStr}) disconnected — waiting ${ROOM.HOST_DEALER_GRACE_SECONDS}s for reconnect`,
       );
-    }
 
-    // Host auto-transfer if the host disconnected
-    if (wasHost) {
-      this.autoTransferHost();
-    }
+      // Auto-pause to freeze all timers
+      if (!this.state.isPaused) {
+        this._pauseTimers();
+        this.state = {
+          ...this.state,
+          isPaused: true,
+          waitingForReconnect: `Waiting for ${participant.displayName} (${roleStr}) to reconnect`,
+          tableStatusMessage: `Waiting for ${roleStr} to reconnect`,
+        };
+      }
 
-    // If the dealer disconnected or host changed, reassign dealer to current/new host
-    if (wasDealer || this.dealerId === playerId) {
-      this.dealerId = this.hostId;
-      this.state.dealerId = this.hostId;
-      if (this.hostId) {
-        const newDealer = this.participants.get(this.hostId);
-        if (newDealer) {
-          if (newDealer.seat !== null) {
-            const seat = newDealer.seat;
-            newDealer.seat = null;
-            const seatedPlayers = new Map(this.state.seatedPlayers);
-            seatedPlayers.delete(seat);
-            this.state = { ...this.state, seatedPlayers };
-          }
-          newDealer.role = "dealer";
+      // Start 90s grace period
+      if (this.hostDealerGraceTimer) {
+        clearTimeout(this.hostDealerGraceTimer);
+      }
+      this.hostDealerGraceTimer = setTimeout(() => {
+        this._onHostDealerGraceExpired(playerId, wasHost, wasDealer);
+      }, ROOM.HOST_DEALER_GRACE_SECONDS * 1000);
+    } else if (wasHost && !isGameActive) {
+      // In lobby, host disconnect immediately auto-transfers to next eligible player
+      this.autoTransferHost(playerId);
+    } else if (
+      isGameActive &&
+      this.state.phase === "player_turns" &&
+      this.state.activeHandId !== null
+    ) {
+      // Active player disconnected during their turn
+      const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
+      if (activeHand && activeHand.playerId === playerId) {
+        if (this.config.actionTimerSec) {
+          // Timer is enabled — normal expiry will auto-stand
+          // Nothing extra needed; the existing actionTimer will fire
+        } else {
+          // Timer is disabled — start a 20s disconnect grace timer
+          const graceTmr = setTimeout(() => {
+            this._onDisconnectGraceExpired(playerId);
+          }, ROOM.DISCONNECT_GRACE_SECONDS * 1000);
+          this.disconnectGraceTimers.set(playerId, graceTmr);
+          this.addActivity(
+            `${participant.displayName}'s turn — auto-stand in ${ROOM.DISCONNECT_GRACE_SECONDS}s (disconnected)`,
+          );
         }
       }
     }
@@ -368,6 +439,105 @@ export class Room {
     }
 
     this.broadcastSnapshot();
+  }
+
+  /** Called when the 90s host/dealer grace period expires. */
+  private _onHostDealerGraceExpired(
+    disconnectedId: string,
+    wasHost: boolean,
+    wasDealer: boolean,
+  ): void {
+    this.hostDealerGraceTimer = null;
+    if (this.isDestroyed) return;
+
+    const disconnectedPart = this.participants.get(disconnectedId);
+    const name = disconnectedPart?.displayName ?? disconnectedId;
+
+    // Find connected participants
+    const connected = Array.from(this.participants.values()).filter(
+      (p) => p.isConnected && p.id !== disconnectedId,
+    );
+
+    if (connected.length === 0) {
+      // No one left — end session
+      this.state = { ...this.state, waitingForReconnect: null };
+      this.endSessionInternal("No participants remaining — session ended");
+      this.broadcastSnapshot();
+      return;
+    }
+
+    // Dealer replacement if needed
+    if (wasDealer && this.dealerId === disconnectedId) {
+      // Reassign dealer to host if available
+      const newDealer = this.participants.get(this.hostId);
+      if (newDealer?.isConnected) {
+        if (newDealer.seat !== null) {
+          const seat = newDealer.seat;
+          newDealer.seat = null;
+          const seatedPlayers = new Map(this.state.seatedPlayers);
+          seatedPlayers.delete(seat);
+          this.state = { ...this.state, seatedPlayers };
+        }
+        newDealer.role = "dealer";
+        this.dealerId = newDealer.id;
+        this.state.dealerId = newDealer.id;
+        this.addActivity(
+          `${newDealer.displayName} automatically became Dealer (previous dealer timed out)`,
+        );
+      } else {
+        // No valid dealer — find any connected non-seated participant
+        const fallback = connected.find((p) => p.seat === null && p.id !== this.hostId);
+        if (fallback) {
+          fallback.role = "dealer";
+          this.dealerId = fallback.id;
+          this.state.dealerId = fallback.id;
+          this.addActivity(
+            `${fallback.displayName} automatically became Dealer (previous dealer timed out)`,
+          );
+        }
+      }
+    }
+
+    // Host transfer if needed
+    if (wasHost) {
+      this.autoTransferHost(disconnectedId);
+    }
+
+    const roleStr = wasHost && wasDealer ? "Host & Dealer" : wasHost ? "Host" : "Dealer";
+    this.addActivity(`${name} (${roleStr}) did not reconnect — table control transferred`);
+
+    this.state = {
+      ...this.state,
+      waitingForReconnect: null,
+      tableStatusMessage: "Game paused — host can resume when ready",
+    };
+
+    this.broadcastSnapshot();
+  }
+
+  /** Called when the 20s disconnect grace expires for an active player (timers disabled). */
+  private _onDisconnectGraceExpired(playerId: string): void {
+    this.disconnectGraceTimers.delete(playerId);
+    if (this.isDestroyed) return;
+    if (this.state.phase !== "player_turns" || !this.state.activeHandId) return;
+    if (this.state.isPaused) return;
+
+    const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
+    if (!activeHand || activeHand.playerId !== playerId) return;
+
+    const p = this.participants.get(playerId);
+    const name = p?.displayName ?? playerId;
+    this.addActivity(`Auto-standing ${name}'s hand (disconnected, grace period expired)`);
+
+    try {
+      this.dispatchEngineAction({
+        type: "play:stand",
+        playerId,
+        handId: activeHand.id,
+      });
+    } catch {
+      // Ignore engine errors
+    }
   }
 
   public leave(socketId: string): void {
@@ -441,7 +611,9 @@ export class Room {
       this.state.phase !== "round_summary" &&
       this.state.phase !== "betting"
     ) {
-      const hasActiveHand = this.state.hands.some((h: Hand) => h.playerId === playerId && !h.isLocked);
+      const hasActiveHand = this.state.hands.some(
+        (h: Hand) => h.playerId === playerId && !h.isLocked,
+      );
       if (hasActiveHand) {
         throw new EngineError("ILLEGAL_ACTION", "Cannot stand while playing an active hand");
       }
@@ -552,7 +724,9 @@ export class Room {
       this.dealerId = this.hostId;
       this.state.dealerId = this.hostId;
       if (this.state.isSessionStarted || this.state.phase !== "lobby") {
-        this.endSessionInternal(`${target.displayName} (Dealer) was kicked - session ended, returning to lobby`);
+        this.endSessionInternal(
+          `${target.displayName} (Dealer) was kicked - session ended, returning to lobby`,
+        );
       }
     }
 
@@ -618,6 +792,12 @@ export class Room {
     });
   }
 
+  // ─── Safe chip-affecting phases check ─────────────────────────────────────
+
+  private isActivePlaying(): boolean {
+    return ACTIVE_PHASES.includes(this.state.phase);
+  }
+
   public adjustChips(
     hostId: string,
     target: string,
@@ -625,6 +805,82 @@ export class Room {
     amount: number,
   ): void {
     this.assertHost(hostId);
+
+    const isDealer = target === "dealer";
+    const current = isDealer ? this.state.dealerBank : (this.state.stacks.get(target) ?? 0);
+    let newBal: number;
+    if (op === "set") newBal = amount;
+    else if (op === "add") newBal = current + amount;
+    else newBal = Math.max(0, current - amount);
+
+    const targetPart = this.participants.get(target);
+    const name = targetPart ? targetPart.displayName : target === "dealer" ? "Dealer" : target;
+
+    const isAdd = op === "add";
+    const isSub = op === "subtract";
+
+    let details = `Host added ₹${amount.toLocaleString()} chips to wallet`;
+    if (isSub) details = `Host deducted ₹${amount.toLocaleString()} chips`;
+    if (op === "set") details = `Host set wallet balance to ₹${amount.toLocaleString()}`;
+
+    // Queue if mid-hand
+    if (this.isActivePlaying()) {
+      this.queuedChipActions.push({
+        type: "adjustment",
+        target,
+        op,
+        amount,
+        displayName: name,
+        requestedAt: Date.now(),
+      });
+
+      this.addActivity(`[Queued] ${details} for ${name} — will apply after this round`);
+      const notif: TableNotification = {
+        id: randomUUID(),
+        type: "info",
+        ...(target !== "dealer" ? { playerId: target } : {}),
+        playerName: name,
+        amount,
+        message: `${name}'s chip adjustment queued — applies after round`,
+        timestamp: Date.now(),
+      };
+      this.broadcastTableNotification(notif);
+      this.broadcastSnapshot();
+      return;
+    }
+
+    // Apply immediately
+    this.addTransaction({
+      id: randomUUID(),
+      roundNumber: this.state.roundNumber,
+      playerId: target,
+      displayName: name,
+      type: "adjustment",
+      amount,
+      balanceAfter: newBal,
+      status: "completed",
+      details,
+      timestamp: Date.now(),
+    });
+
+    this.addActivity(details);
+
+    const notifMessage = isAdd
+      ? `${name} was granted ₹${amount.toLocaleString()} chips by host`
+      : isSub
+        ? `Host deducted ₹${amount.toLocaleString()} chips from ${name}`
+        : `Host set ${name}'s balance to ₹${amount.toLocaleString()}`;
+
+    const notif: TableNotification = {
+      id: randomUUID(),
+      type: isAdd ? "chip_approved" : "info",
+      ...(target !== "dealer" ? { playerId: target } : {}),
+      playerName: name,
+      amount,
+      message: notifMessage,
+      timestamp: Date.now(),
+    };
+    this.broadcastTableNotification(notif);
 
     this.dispatchEngineAction({
       type: "host:adjustChips",
@@ -638,30 +894,98 @@ export class Room {
     if (approverId !== this.hostId && approverId !== this.dealerId) {
       throw new EngineError("NOT_HOST", "Only the host or dealer can approve chip requests");
     }
-    this.assertBetweenRounds();
 
-    const rebuyAmount = amount && amount > 0 ? amount : this.config.rebuyAmount;
+    // Check if there is a pending chip_request
+    const pendingTx = this.transactions.find(
+      (tx) => tx.playerId === targetId && tx.type === "chip_request" && tx.status === "pending",
+    );
 
-    this.dispatchEngineAction({
-      type: "rebuy:request",
-      playerId: targetId,
-      amount: rebuyAmount,
-    });
+    // If there is no pending request, check if a rebuy was already approved very recently
+    if (!pendingTx) {
+      const recentlyApproved = this.transactions.some(
+        (tx) =>
+          tx.playerId === targetId &&
+          (tx.type === "rebuy" || (tx.type === "chip_request" && tx.status === "approved")) &&
+          Date.now() - tx.timestamp < 3000,
+      );
+      if (recentlyApproved) {
+        console.warn(`[Rebuy] Duplicate approveRebuy ignored for player ${targetId}`);
+        return;
+      }
+    }
+
+    const rebuyAmount =
+      amount && amount > 0 ? amount : pendingTx ? pendingTx.amount : this.config.rebuyAmount;
 
     const target = this.participants.get(targetId);
     const name = target ? target.displayName : targetId;
-    const newStack = this.state.stacks.get(targetId) ?? 0;
+    const currentStack = this.state.stacks.get(targetId) ?? 0;
+    const newStack = currentStack + rebuyAmount;
 
+    // Update pending chip_request status to approved in transactions
+    if (pendingTx) {
+      pendingTx.status = "approved";
+    }
+
+    // Queue if mid-hand
+    if (this.isActivePlaying()) {
+      this.queuedChipActions.push({
+        type: "rebuy",
+        target: targetId,
+        amount: rebuyAmount,
+        displayName: name,
+        requestedAt: Date.now(),
+      });
+
+      this.addTransaction({
+        id: randomUUID(),
+        roundNumber: this.state.roundNumber,
+        playerId: targetId,
+        displayName: name,
+        type: "chip_request",
+        amount: rebuyAmount,
+        balanceAfter: currentStack,
+        status: "approved",
+        details: "Rebuy approved — will apply after this round",
+        timestamp: Date.now(),
+      });
+
+      this.addActivity(
+        `Rebuy of ₹${rebuyAmount.toLocaleString()} approved for ${name} — applies after round`,
+      );
+
+      const notif: TableNotification = {
+        id: randomUUID(),
+        type: "info",
+        playerId: targetId,
+        playerName: name,
+        amount: rebuyAmount,
+        message: `${name}'s rebuy queued — applies after round`,
+        timestamp: Date.now(),
+      };
+      this.broadcastTableNotification(notif);
+      this.broadcastSnapshot();
+      return;
+    }
+
+    // Apply immediately
     this.addTransaction({
       id: randomUUID(),
-      roundNumber: this.roundCount,
+      roundNumber: this.state.roundNumber,
       playerId: targetId,
       displayName: name,
       type: "rebuy",
       amount: rebuyAmount,
       balanceAfter: newStack,
-      details: "Chips approved by dealer/host",
+      status: "approved",
+      details: "Chips approved & granted by dealer/host",
       timestamp: Date.now(),
+    });
+
+    this.dispatchEngineAction({
+      type: "rebuy:request",
+      playerId: targetId,
+      amount: rebuyAmount,
     });
 
     this.addActivity(`Approved ${rebuyAmount.toLocaleString()} chips for ${name}`);
@@ -672,10 +996,58 @@ export class Room {
       playerId: targetId,
       playerName: name,
       amount: rebuyAmount,
-      message: `${name} was approved for ${rebuyAmount.toLocaleString()} chips`,
+      message: `${name} was granted ${rebuyAmount.toLocaleString()} chips`,
       timestamp: Date.now(),
     };
     this.broadcastTableNotification(notif);
+  }
+
+  /** Apply all queued chip actions (called at round_summary or next betting phase). */
+  private applyQueuedChipActions(): void {
+    if (this.queuedChipActions.length === 0) return;
+
+    for (const action of this.queuedChipActions) {
+      try {
+        if (action.type === "rebuy") {
+          this.dispatchEngineAction({
+            type: "rebuy:request",
+            playerId: action.target,
+            amount: action.amount,
+          });
+
+          const currentStack = this.state.stacks.get(action.target) ?? 0;
+          this.addTransaction({
+            id: randomUUID(),
+            roundNumber: this.state.roundNumber,
+            playerId: action.target,
+            displayName: action.displayName,
+            type: "rebuy",
+            amount: action.amount,
+            balanceAfter: currentStack,
+            status: "completed",
+            details: "Queued rebuy applied",
+            timestamp: Date.now(),
+          });
+          this.addActivity(
+            `Queued rebuy of ₹${action.amount.toLocaleString()} applied for ${action.displayName}`,
+          );
+        } else if (action.type === "adjustment" && action.op) {
+          this.dispatchEngineAction({
+            type: "host:adjustChips",
+            target: action.target,
+            op: action.op,
+            amount: action.amount,
+          });
+          this.addActivity(
+            `Queued chip adjustment applied for ${action.displayName}: ${action.op} ₹${action.amount.toLocaleString()}`,
+          );
+        }
+      } catch (err) {
+        console.warn(`[QueuedChips] Error applying queued action for ${action.target}:`, err);
+      }
+    }
+
+    this.queuedChipActions = [];
   }
 
   public startSession(hostId: string): void {
@@ -692,22 +1064,296 @@ export class Room {
     this.setupBetTimer();
   }
 
+  // ─── Pause / Resume (properly freezing timers) ────────────────────────────
+
   public pause(hostId: string): void {
     this.assertHost(hostId);
     if (this.state.isPaused) return;
 
-    this.state = { ...this.state, isPaused: true };
+    this._pauseTimers();
+    this.state = {
+      ...this.state,
+      isPaused: true,
+      tableStatusMessage: "Game paused by host",
+    };
     this.addActivity("Game paused by host");
     this.broadcastSnapshot();
+  }
+
+  /** Capture remaining ms and clear Node timers without clearing deadlines. */
+  private _pauseTimers(): void {
+    const now = Date.now();
+    const betRemaining =
+      this.betTimer && this.state.betDeadline ? Math.max(0, this.state.betDeadline - now) : null;
+    const actionRemaining =
+      this.actionTimer && this.state.actionDeadline
+        ? Math.max(0, this.state.actionDeadline - now)
+        : null;
+    const insuranceRemaining =
+      this.insuranceTimer && this.state.insuranceDeadline
+        ? Math.max(0, this.state.insuranceDeadline - now)
+        : null;
+
+    // Clear the Node timer handles
+    if (this.betTimer) {
+      clearTimeout(this.betTimer);
+      this.betTimer = null;
+    }
+    if (this.actionTimer) {
+      clearTimeout(this.actionTimer);
+      this.actionTimer = null;
+    }
+    if (this.insuranceTimer) {
+      clearTimeout(this.insuranceTimer);
+      this.insuranceTimer = null;
+    }
+
+    this.state = {
+      ...this.state,
+      pausedRemainingMs: {
+        bet: betRemaining,
+        action: actionRemaining,
+        insurance: insuranceRemaining,
+      },
+      // Null out deadlines while paused so clients don't show a running countdown
+      betDeadline: null,
+      actionDeadline: null,
+      insuranceDeadline: null,
+    };
   }
 
   public resume(hostId: string): void {
     this.assertHost(hostId);
     if (!this.state.isPaused) return;
 
-    this.state = { ...this.state, isPaused: false };
+    const remaining = this.state.pausedRemainingMs;
+
+    this.state = {
+      ...this.state,
+      isPaused: false,
+      pausedRemainingMs: null,
+      waitingForReconnect: null,
+      tableStatusMessage: null,
+    };
+
+    // Restore timers from saved remaining durations
+    if (remaining) {
+      const now = Date.now();
+
+      if (remaining.bet !== null) {
+        if (remaining.bet <= 0) {
+          // Already expired — process safe default immediately
+          setTimeout(() => this.handleBetTimerExpiry(), 0);
+        } else {
+          this.state = { ...this.state, betDeadline: now + remaining.bet };
+          this.betTimer = setTimeout(() => this.handleBetTimerExpiry(), remaining.bet);
+        }
+      }
+
+      if (remaining.action !== null) {
+        if (remaining.action <= 0) {
+          setTimeout(() => this.handleActionTimerExpiry(), 0);
+        } else {
+          this.state = { ...this.state, actionDeadline: now + remaining.action };
+          this.actionTimer = setTimeout(() => this.handleActionTimerExpiry(), remaining.action);
+        }
+      }
+
+      if (remaining.insurance !== null) {
+        if (remaining.insurance <= 0) {
+          setTimeout(() => this.handleInsuranceTimerExpiry(), 0);
+        } else {
+          this.state = {
+            ...this.state,
+            insuranceDeadline: now + remaining.insurance,
+          };
+          this.insuranceTimer = setTimeout(
+            () => this.handleInsuranceTimerExpiry(),
+            remaining.insurance,
+          );
+        }
+      }
+    }
+
     this.addActivity("Game resumed by host");
     this.broadcastSnapshot();
+  }
+
+  // ─── Host Recovery Controls ────────────────────────────────────────────────
+
+  /**
+   * Host forces the currently active hand to stand (recovery action).
+   * Allowed during any pause or active turn, even if the host is not the active player.
+   */
+  public forceStandActiveHand(hostId: string): void {
+    this.assertHost(hostId);
+
+    if (this.state.phase !== "player_turns" || !this.state.activeHandId) {
+      throw new EngineError("WRONG_PHASE", "No active hand to force stand");
+    }
+
+    const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
+    if (!activeHand) throw new EngineError("ILLEGAL_ACTION", "Active hand not found");
+
+    const p = this.participants.get(activeHand.playerId);
+    const name = p?.displayName ?? activeHand.playerId;
+
+    this.addActivity(`[Host Recovery] Force-standing ${name}'s hand`);
+
+    // Temporarily lift pause to allow the engine action
+    const wasPaused = this.state.isPaused;
+    if (wasPaused) {
+      this.state = { ...this.state, isPaused: false };
+    }
+
+    try {
+      this.dispatchEngineAction({
+        type: "play:stand",
+        playerId: activeHand.playerId,
+        handId: activeHand.id,
+      });
+    } finally {
+      if (wasPaused) {
+        this.state = { ...this.state, isPaused: true };
+      }
+    }
+  }
+
+  /**
+   * Host cancels the current round and refunds all bets.
+   * Returns the table to the betting phase without incrementing round count.
+   */
+  public cancelRoundRefund(hostId: string): void {
+    this.assertHost(hostId);
+
+    const phase = this.state.phase;
+    const allowedPhases: GamePhase[] = [
+      "betting",
+      "dealing",
+      "insurance",
+      "peek",
+      "player_turns",
+      "dealer_turn",
+      "settlement",
+    ];
+    if (!allowedPhases.includes(phase)) {
+      throw new EngineError("WRONG_PHASE", "No round in progress to cancel");
+    }
+
+    // Clear active timers
+    this._clearGameTimers();
+
+    // Refund all bets (avoiding duplicate refund of lockedBets and in-play hands)
+    const stacks = new Map(this.state.stacks);
+    const refundedPlayers = new Set<string>();
+
+    if (this.state.hands.length > 0) {
+      for (const hand of this.state.hands) {
+        if (hand.result === "pending") {
+          const total = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
+          stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + total);
+          refundedPlayers.add(hand.playerId);
+        }
+      }
+    }
+
+    for (const [pid, bet] of this.state.lockedBets.entries()) {
+      if (!refundedPlayers.has(pid)) {
+        stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
+      }
+    }
+
+    this.state = {
+      ...this.state,
+      stacks,
+      phase: "betting",
+      hands: [],
+      dealerHand: null,
+      pendingBets: new Map(),
+      lockedBets: new Map(),
+      sittingOut: new Set(),
+      insurancePending: new Set(),
+      insuranceDecisions: new Map(),
+      activeHandId: null,
+      betDeadline: null,
+      actionDeadline: null,
+      insuranceDeadline: null,
+      pausedRemainingMs: null,
+      isPaused: false,
+      tableStatusMessage: null,
+    };
+
+    this.addActivity("[Host Recovery] Round cancelled by host — all bets refunded");
+    this.setupBetTimer();
+    this.broadcastSnapshot();
+  }
+
+  /**
+   * Host replaces the current dealer with another connected participant.
+   * The replacement cannot be seated as a player.
+   */
+  public recoverDealer(hostId: string, newDealerId: string): void {
+    this.assertHost(hostId);
+
+    const newDealer = this.participants.get(newDealerId);
+    if (!newDealer) throw new EngineError("ILLEGAL_ACTION", "Target user not found");
+    if (!newDealer.isConnected)
+      throw new EngineError("ILLEGAL_ACTION", "Target user is not connected");
+    if (newDealer.seat !== null) {
+      throw new EngineError("ILLEGAL_ACTION", "Replacement dealer cannot be seated as a player");
+    }
+
+    // Demote existing dealer
+    if (this.dealerId && this.dealerId !== newDealerId) {
+      const old = this.participants.get(this.dealerId);
+      if (old && old.role === "dealer") {
+        old.role = old.isHost ? "host" : "spectator";
+      }
+    }
+
+    newDealer.role = "dealer";
+    this.dealerId = newDealerId;
+    this.state.dealerId = newDealerId;
+
+    this.addActivity(`[Host Recovery] ${newDealer.displayName} is now the Dealer`);
+    this.broadcastSnapshot();
+  }
+
+  /**
+   * Host closes the table: ends any active session, removes all participants, and
+   * destroys the room. Sends a "room:closed" message to all connected clients first.
+   */
+  public closeTable(hostId: string): void {
+    this.assertHost(hostId);
+
+    // End session if active
+    if (this.state.isSessionStarted) {
+      this.endSessionInternal("Host closed the table");
+    }
+
+    // Notify all connected clients before disconnecting
+    for (const socket of this.sockets.values()) {
+      try {
+        socket.emit("room:closed", {
+          type: "room:closed",
+          reason: "Host closed the table",
+        });
+      } catch {
+        // Ignore
+      }
+    }
+
+    this.addActivity("Host closed the table");
+
+    // Remove from room manager immediately
+    if (this.onEmptyRoomDestroy) {
+      this.onEmptyRoomDestroy(this.roomCode);
+    }
+
+    // Defer socket teardown slightly so ack and room:closed flush cleanly
+    setTimeout(() => {
+      this.destroy();
+    }, 50);
   }
 
   public endSession(hostId: string): void {
@@ -717,9 +1363,49 @@ export class Room {
   }
 
   private endSessionInternal(reason?: string): void {
-    this.clearBetTimer();
-    this.clearActionTimer();
-    this.clearInsuranceTimer();
+    this._clearGameTimers();
+
+    // Refund any chips that were in locked bets or pending in-play hands
+    const stacks = new Map(this.state.stacks);
+    const refundedPlayers = new Set<string>();
+
+    if (this.state.hands.length > 0) {
+      for (const hand of this.state.hands) {
+        if (hand.result === "pending") {
+          const inPlay = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
+          stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + inPlay);
+          refundedPlayers.add(hand.playerId);
+        }
+      }
+    }
+
+    for (const [pid, bet] of this.state.lockedBets.entries()) {
+      if (!refundedPlayers.has(pid)) {
+        stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
+      }
+    }
+
+    this.state = {
+      ...this.state,
+      stacks,
+      phase: "lobby",
+      isSessionStarted: false,
+      isPaused: false,
+      hands: [],
+      dealerHand: null,
+      pendingBets: new Map(),
+      lockedBets: new Map(),
+      sittingOut: new Set(),
+      insurancePending: new Set(),
+      insuranceDecisions: new Map(),
+      activeHandId: null,
+      betDeadline: null,
+      actionDeadline: null,
+      insuranceDeadline: null,
+      pausedRemainingMs: null,
+      tableStatusMessage: null,
+      waitingForReconnect: null,
+    };
 
     // Persist session summary and player results per Brief Section 11
     const roomCode = this.roomCode;
@@ -760,35 +1446,6 @@ export class Room {
       });
 
     dbService.deleteRoomSnapshot(this.roomCode).catch(() => {});
-
-    // Refund any chips that were in locked bets or pending bets
-    const stacks = new Map(this.state.stacks);
-    for (const [pid, bet] of this.state.lockedBets.entries()) {
-      stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
-    }
-    for (const hand of this.state.hands) {
-      if (hand.result === "pending") {
-        const inPlay = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
-        stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + inPlay);
-      }
-    }
-
-    this.state = {
-      ...this.state,
-      stacks,
-      phase: "lobby",
-      isSessionStarted: false,
-      hands: [],
-      dealerHand: null,
-      pendingBets: new Map(),
-      lockedBets: new Map(),
-      sittingOut: new Set(),
-      insurancePending: new Set(),
-      insuranceDecisions: new Map(),
-      activeHandId: null,
-      betDeadline: null,
-      actionDeadline: null,
-    };
     this.addActivity(reason ?? "Host ended the game session");
   }
 
@@ -861,25 +1518,103 @@ export class Room {
         const name = p ? p.displayName : playerId;
         const reqAmount =
           action.amount && action.amount > 0 ? action.amount : this.config.rebuyAmount;
-
-        const notif: TableNotification = {
-          id: randomUUID(),
-          type: "chip_request",
-          playerId,
-          playerName: name,
-          amount: reqAmount,
-          message: `${name} requested ${reqAmount.toLocaleString()} chips`,
-          timestamp: Date.now(),
-        };
-        this.broadcastTableNotification(notif);
-
+        const currentStack = this.state.stacks.get(playerId) ?? 0;
         if (this.config.rebuyRequiresHostApproval) {
+          // Check if there is already a pending request for this player
+          const existingPending = this.transactions.find(
+            (tx) =>
+              tx.playerId === playerId && tx.type === "chip_request" && tx.status === "pending",
+          );
+          if (existingPending) {
+            existingPending.amount = reqAmount;
+            existingPending.details = `Requested ₹${reqAmount.toLocaleString()} chips`;
+          } else {
+            this.addTransaction({
+              id: randomUUID(),
+              roundNumber: this.state.roundNumber,
+              playerId,
+              displayName: name,
+              type: "chip_request",
+              amount: reqAmount,
+              balanceAfter: currentStack,
+              status: "pending",
+              details: `Requested ₹${reqAmount.toLocaleString()} chips`,
+              timestamp: Date.now(),
+            });
+          }
+
+          const notif: TableNotification = {
+            id: randomUUID(),
+            type: "chip_request",
+            playerId,
+            playerName: name,
+            amount: reqAmount,
+            message: `${name} requested ${reqAmount.toLocaleString()} chips`,
+            timestamp: Date.now(),
+          };
+          this.broadcastTableNotification(notif);
           this.addActivity(`${name} requested a rebuy (${reqAmount.toLocaleString()} chips)`);
           this.broadcastSnapshot();
           if (actionId) this.actionDeduplication.set(actionId, { timestamp: Date.now() });
           return;
         }
-        break;
+
+        // Auto-rebuy (when host approval is not required)
+        // Queue if mid-hand; apply immediately otherwise
+        if (this.isActivePlaying()) {
+          this.queuedChipActions.push({
+            type: "rebuy",
+            target: playerId,
+            amount: reqAmount,
+            displayName: name,
+            requestedAt: Date.now(),
+          });
+          this.addTransaction({
+            id: randomUUID(),
+            roundNumber: this.state.roundNumber,
+            playerId,
+            displayName: name,
+            type: "chip_request",
+            amount: reqAmount,
+            balanceAfter: currentStack,
+            status: "approved",
+            details: "Auto-rebuy queued — applies after round",
+            timestamp: Date.now(),
+          });
+          this.addActivity(`${name} rebuy queued — applies after round`);
+          this.broadcastSnapshot();
+          if (actionId) this.actionDeduplication.set(actionId, { timestamp: Date.now() });
+          return;
+        }
+
+        const newStack = currentStack + reqAmount;
+        this.addTransaction({
+          id: randomUUID(),
+          roundNumber: this.state.roundNumber,
+          playerId,
+          displayName: name,
+          type: "rebuy",
+          amount: reqAmount,
+          balanceAfter: newStack,
+          status: "completed",
+          details: `Auto-rebuy: ₹${reqAmount.toLocaleString()} chips added`,
+          timestamp: Date.now(),
+        });
+
+        this.dispatchEngineAction(action);
+
+        const notif: TableNotification = {
+          id: randomUUID(),
+          type: "chip_approved",
+          playerId,
+          playerName: name,
+          amount: reqAmount,
+          message: `${name} auto-re-bought ${reqAmount.toLocaleString()} chips`,
+          timestamp: Date.now(),
+        };
+        this.broadcastTableNotification(notif);
+        if (actionId) this.actionDeduplication.set(actionId, { timestamp: Date.now() });
+        return;
       }
     }
 
@@ -913,12 +1648,19 @@ export class Room {
     // Phase transition timer updates
     this.handlePhaseTransitions(prevPhase, nextState.phase);
 
+    // Update table status message after every action
+    this.updateTableStatusMessage();
+
     this.broadcastSnapshot();
   }
 
-  private handlePhaseTransitions(_prevPhase: GamePhase, newPhase: GamePhase): void {
+  private handlePhaseTransitions(prevPhase: GamePhase, newPhase: GamePhase): void {
+    if (prevPhase === newPhase) return;
+
     if (newPhase === "betting") {
       this.clearActionTimer();
+      // Apply any queued chip actions before starting the next betting phase
+      this.applyQueuedChipActions();
       this.setupBetTimer();
     } else if (newPhase === "insurance") {
       this.clearBetTimer();
@@ -934,8 +1676,11 @@ export class Room {
         this.runAutoDealerTurn();
       }
     } else if (newPhase === "round_summary") {
-      this.roundCount++;
-      this.clearAllTimers();
+      this.roundCount = this.state.roundNumber;
+      this._clearGameTimers();
+
+      // Apply queued chip actions at round summary
+      this.applyQueuedChipActions();
 
       for (const hand of this.state.hands) {
         const participant = this.participants.get(hand.playerId);
@@ -944,23 +1689,23 @@ export class Room {
         const currentBalance = this.state.stacks.get(hand.playerId) ?? 0;
         let txType: "round_win" | "round_loss" | "round_push" = "round_loss";
         let amount = totalWager;
-        let details = `Round ${this.roundCount} Loss`;
+        let details = `Round ${this.state.roundNumber} Loss`;
 
         if (hand.result === "win" || hand.result === "blackjack") {
           txType = "round_win";
           details =
             hand.result === "blackjack"
-              ? `Round ${this.roundCount} Blackjack Win`
-              : `Round ${this.roundCount} Win`;
+              ? `Round ${this.state.roundNumber} Blackjack Win`
+              : `Round ${this.state.roundNumber} Win`;
         } else if (hand.result === "push") {
           txType = "round_push";
           amount = 0;
-          details = `Round ${this.roundCount} Push`;
+          details = `Round ${this.state.roundNumber} Push`;
         }
 
         this.addTransaction({
           id: randomUUID(),
-          roundNumber: this.roundCount,
+          roundNumber: this.state.roundNumber,
           playerId: hand.playerId,
           displayName: name,
           type: txType,
@@ -992,6 +1737,86 @@ export class Room {
     }, TIMING.CARD_FLIP_MS);
   }
 
+  // ─── Table Status Message ──────────────────────────────────────────────────
+
+  /** Derives and sets the authoritative table status message for all clients. */
+  private updateTableStatusMessage(): void {
+    if (this.state.isPaused) {
+      // Don't overwrite a waiting-for-reconnect message
+      if (!this.state.tableStatusMessage || !this.state.waitingForReconnect) {
+        this.state = { ...this.state, tableStatusMessage: "Game paused by host" };
+      }
+      return;
+    }
+
+    let msg: string | null = null;
+    const phase = this.state.phase;
+
+    switch (phase) {
+      case "lobby":
+        msg = "Waiting for host to start the session";
+        break;
+      case "betting": {
+        const lockedCount = this.state.lockedBets.size;
+        const seatedCount = this.state.seatedPlayers.size;
+        if (lockedCount === seatedCount) {
+          msg = "Waiting for dealer to deal";
+        } else {
+          msg = `Waiting for players to place bets (${lockedCount}/${seatedCount} ready)`;
+        }
+        break;
+      }
+      case "dealing":
+        msg = "Dealing cards…";
+        break;
+      case "insurance": {
+        const pending = this.state.insurancePending.size;
+        msg =
+          pending === 1
+            ? "Waiting for 1 insurance decision"
+            : `Waiting for ${pending} insurance decisions`;
+        break;
+      }
+      case "peek":
+        msg = "Checking for dealer blackjack…";
+        break;
+      case "player_turns": {
+        if (this.state.activeHandId) {
+          const hand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
+          if (hand) {
+            const p = this.participants.get(hand.playerId);
+            const name = p?.displayName ?? hand.playerId;
+            if (this.state.actionDeadline) {
+              const secLeft = Math.max(
+                0,
+                Math.round((this.state.actionDeadline - Date.now()) / 1000),
+              );
+              msg = `${name}'s turn — ${secLeft}s remaining`;
+            } else {
+              msg = `${name}'s turn`;
+            }
+          }
+        }
+        break;
+      }
+      case "dealer_turn":
+        msg = "Dealer is revealing cards";
+        break;
+      case "settlement":
+        msg = "Settling hands…";
+        break;
+      case "round_summary": {
+        const dealerName = this.dealerId
+          ? (this.participants.get(this.dealerId)?.displayName ?? "Dealer")
+          : "Dealer";
+        msg = `Round complete — ${dealerName}, start next round`;
+        break;
+      }
+    }
+
+    this.state = { ...this.state, tableStatusMessage: msg };
+  }
+
   // ─── Timers ────────────────────────────────────────────────────────────────
 
   private setupBetTimer(): void {
@@ -1006,6 +1831,7 @@ export class Room {
 
   private handleBetTimerExpiry(): void {
     if (this.state.phase !== "betting") return;
+    if (this.state.isPaused) return; // Safety guard
 
     // Sit out anyone who hasn't locked
     for (const [_seat, playerId] of this.state.seatedPlayers) {
@@ -1034,22 +1860,30 @@ export class Room {
   private setupInsuranceTimer(): void {
     this.clearInsuranceTimer();
     const duration = TIMING.INSURANCE_TIMER_MS;
+    const deadline = Date.now() + duration;
+    this.state = { ...this.state, insuranceDeadline: deadline };
     this.insuranceTimer = setTimeout(() => {
-      if (this.state.phase !== "insurance") return;
-      // Default non-respondents to No
-      for (const playerId of Array.from(this.state.insurancePending)) {
-        try {
-          this.dispatchEngineAction({
-            type: "play:insurance",
-            playerId,
-            handId: "",
-            accept: false,
-          });
-        } catch {
-          // Ignore
-        }
-      }
+      this.handleInsuranceTimerExpiry();
     }, duration);
+  }
+
+  private handleInsuranceTimerExpiry(): void {
+    if (this.state.phase !== "insurance") return;
+    if (this.state.isPaused) return; // Safety guard
+
+    // Default non-respondents to No
+    for (const playerId of Array.from(this.state.insurancePending)) {
+      try {
+        this.dispatchEngineAction({
+          type: "play:insurance",
+          playerId,
+          handId: "",
+          accept: false,
+        });
+      } catch {
+        // Ignore
+      }
+    }
   }
 
   private setupActionTimer(): void {
@@ -1066,6 +1900,7 @@ export class Room {
 
   private handleActionTimerExpiry(): void {
     if (this.state.phase !== "player_turns" || !this.state.activeHandId) return;
+    if (this.state.isPaused) return; // Safety guard
 
     const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
     if (!activeHand) return;
@@ -1103,14 +1938,26 @@ export class Room {
       clearTimeout(this.insuranceTimer);
       this.insuranceTimer = null;
     }
+    this.state.insuranceDeadline = null;
   }
 
-  private clearAllTimers(): void {
+  /** Clear only game-related timers (not seat hold, empty room, or grace timers). */
+  private _clearGameTimers(): void {
     this.clearBetTimer();
     this.clearActionTimer();
     this.clearInsuranceTimer();
+  }
+
+  private clearAllTimers(): void {
+    this._clearGameTimers();
     for (const t of this.seatHoldTimers.values()) clearTimeout(t);
     this.seatHoldTimers.clear();
+    for (const t of this.disconnectGraceTimers.values()) clearTimeout(t);
+    this.disconnectGraceTimers.clear();
+    if (this.hostDealerGraceTimer) {
+      clearTimeout(this.hostDealerGraceTimer);
+      this.hostDealerGraceTimer = null;
+    }
     this.cancelEmptyRoomTimer();
   }
 
@@ -1215,6 +2062,12 @@ export class Room {
     for (const [playerId, socket] of this.sockets) {
       const view = viewFor(this.state, playerId);
       view.transactions = this.transactions;
+      // Include pending chip adjustment player IDs
+      if (this.queuedChipActions.length > 0) {
+        view.pendingChipAdjustmentPlayers = [
+          ...new Set(this.queuedChipActions.map((a) => a.target)),
+        ];
+      }
       socket.emit("snapshot", {
         type: "snapshot",
         seq: this.state.seq,
@@ -1262,10 +2115,10 @@ export class Room {
     }
   }
 
-  private autoTransferHost(): void {
+  private autoTransferHost(excludeId?: string): void {
     // Find longest-seated connected participant, or any connected participant
     const candidates = Array.from(this.participants.values()).filter(
-      (p) => p.isConnected && p.id !== this.hostId,
+      (p) => p.isConnected && p.id !== this.hostId && p.id !== excludeId,
     );
 
     if (candidates.length === 0) return;
@@ -1303,8 +2156,11 @@ export class Room {
     this.participants.clear();
   }
 
+  // ─── Serialization / Snapshot ──────────────────────────────────────────────
+
   public serialize(): string {
     return JSON.stringify({
+      _version: ROOM.SNAPSHOT_VERSION,
       roomCode: this.roomCode,
       password: this.password,
       config: this.config,
@@ -1315,10 +2171,13 @@ export class Room {
       roundCount: this.roundCount,
       state: {
         ...this.state,
+        // Convert Map/Set fields to JSON-safe arrays
         participants: Array.from(this.state.participants.entries()),
         seatedPlayers: Array.from(this.state.seatedPlayers.entries()),
         stacks: Array.from(this.state.stacks.entries()),
         totalBuyIns: Array.from(this.state.totalBuyIns.entries()),
+        initialBuyIns: Array.from((this.state.initialBuyIns ?? new Map()).entries()),
+        rebuys: Array.from((this.state.rebuys ?? new Map()).entries()),
         pendingBets: Array.from(this.state.pendingBets.entries()),
         lastBets: Array.from(this.state.lastBets.entries()),
         lockedBets: Array.from(this.state.lockedBets.entries()),
@@ -1328,13 +2187,15 @@ export class Room {
       },
       participants: Array.from(this.participants.entries()).map(([id, p]) => [
         id,
-        { ...p, isConnected: false },
+        { ...p, isConnected: false }, // all marked disconnected on restore
       ]),
       playerTokens: Array.from(this.playerTokens.entries()),
       bannedTokens: Array.from(this.bannedTokens.values()),
       bannedPlayerIds: Array.from(this.bannedPlayerIds.values()),
       chatLog: this.chatLog,
       activityLog: this.activityLog,
+      transactions: this.transactions,
+      queuedChipActions: this.queuedChipActions,
     });
   }
 
@@ -1342,7 +2203,21 @@ export class Room {
     jsonStr: string,
     options: { onEmptyRoomDestroy?: (code: string) => void },
   ): Room {
-    const data = JSON.parse(jsonStr);
+    let data: ReturnType<typeof JSON.parse>;
+    try {
+      data = JSON.parse(jsonStr);
+    } catch (err) {
+      throw new Error(`Snapshot parse error: ${err}`);
+    }
+
+    // Version check — future migrations would go here
+    const version = data._version ?? 0;
+    if (version > ROOM.SNAPSHOT_VERSION) {
+      throw new Error(
+        `Snapshot version ${version} is newer than supported ${ROOM.SNAPSHOT_VERSION}`,
+      );
+    }
+
     const room = new Room({
       roomCode: data.roomCode,
       password: data.password,
@@ -1358,16 +2233,24 @@ export class Room {
 
     room.state = {
       ...data.state,
-      participants: new Map(data.participants),
+      // Restore Map/Set fields
+      participants: new Map(data.state.participants ?? data.participants),
       seatedPlayers: new Map(data.state.seatedPlayers),
       stacks: new Map(data.state.stacks),
       totalBuyIns: new Map(data.state.totalBuyIns),
+      initialBuyIns: new Map(data.state.initialBuyIns || []),
+      rebuys: new Map(data.state.rebuys || []),
       pendingBets: new Map(data.state.pendingBets || []),
       lastBets: new Map(data.state.lastBets || []),
       lockedBets: new Map(data.state.lockedBets || []),
       insuranceDecisions: new Map(data.state.insuranceDecisions || []),
       sittingOut: new Set(data.state.sittingOut || []),
       insurancePending: new Set(data.state.insurancePending || []),
+      // New fields with defaults for old snapshots
+      insuranceDeadline: data.state.insuranceDeadline ?? null,
+      pausedRemainingMs: data.state.pausedRemainingMs ?? null,
+      tableStatusMessage: data.state.tableStatusMessage ?? null,
+      waitingForReconnect: null, // always cleared on restore
     };
 
     for (const [id, p] of data.participants) {
@@ -1385,7 +2268,49 @@ export class Room {
 
     room.chatLog = data.chatLog || [];
     room.activityLog = data.activityLog || [];
+    room.transactions = data.transactions || [];
+    room.queuedChipActions = data.queuedChipActions || [];
+
+    // Start empty-room timer since all participants are disconnected on restore
+    room.startEmptyRoomTimer();
+
+    // Recreate active timers if deadlines are overdue (handle them safely)
+    if (room.state.isSessionStarted && !room.state.isPaused) {
+      room._recreateTimersAfterRestore();
+    }
+
+    room.addActivity("Room restored from snapshot (all players marked disconnected)");
 
     return room;
+  }
+
+  /** After deserialization, recreate/expire overdue timers safely. */
+  private _recreateTimersAfterRestore(): void {
+    const now = Date.now();
+    const phase = this.state.phase;
+
+    if (phase === "betting" && this.state.betDeadline !== null) {
+      const remaining = this.state.betDeadline - now;
+      if (remaining <= 0) {
+        // Overdue — process immediately
+        setTimeout(() => this.handleBetTimerExpiry(), 0);
+      } else {
+        this.betTimer = setTimeout(() => this.handleBetTimerExpiry(), remaining);
+      }
+    } else if (phase === "insurance" && this.state.insuranceDeadline !== null) {
+      const remaining = this.state.insuranceDeadline - now;
+      if (remaining <= 0) {
+        setTimeout(() => this.handleInsuranceTimerExpiry(), 0);
+      } else {
+        this.insuranceTimer = setTimeout(() => this.handleInsuranceTimerExpiry(), remaining);
+      }
+    } else if (phase === "player_turns" && this.state.actionDeadline !== null) {
+      const remaining = this.state.actionDeadline - now;
+      if (remaining <= 0) {
+        setTimeout(() => this.handleActionTimerExpiry(), 0);
+      } else {
+        this.actionTimer = setTimeout(() => this.handleActionTimerExpiry(), remaining);
+      }
+    }
   }
 }

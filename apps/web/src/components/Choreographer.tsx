@@ -60,7 +60,11 @@ export const Choreographer: React.FC<ChoreographerProps> = ({ showOutcomes = tru
     }
 
     // Round outcome celebration / floaters — ONLY when showOutcomes is true!
-    if (showOutcomes && (phase === "round_summary" || phase === "settlement") && roundNumber !== prevRound) {
+    if (
+      showOutcomes &&
+      (phase === "round_summary" || phase === "settlement") &&
+      roundNumber !== prevRound
+    ) {
       prevRoundRef.current = roundNumber;
 
       const myHands = hands.filter((h: ClientHand) => h.playerId === myPlayerId);
