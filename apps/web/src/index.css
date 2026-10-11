@@ -65,19 +65,30 @@
     --table-marking: rgba(233, 213, 255, 0.35);
   }
 
-  html,
+  html {
+    height: 100%;
+    /* Let screens manage their own overflow — do NOT set overflow:hidden here */
+  }
+
   body {
     background-color: var(--felt-bg);
     color: var(--felt-text);
     font-family: Inter, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
-    overflow: hidden;
+    /* No overflow:hidden — LandingScreen and LobbyScreen need to scroll */
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
+    min-height: 100dvh;
+    height: 100%;
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+
+  #root {
     height: 100%;
     min-height: 100dvh;
-    transition: background-color 0.4s ease, color 0.4s ease;
+    display: flex;
+    flex-direction: column;
   }
 }
 

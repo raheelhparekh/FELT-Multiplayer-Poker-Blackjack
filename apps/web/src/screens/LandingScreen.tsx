@@ -114,13 +114,13 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-[#07130a] text-emerald-100 flex flex-col items-center justify-start sm:justify-center p-3 sm:p-6 relative overflow-y-auto overflow-x-hidden">
+    <div className="min-h-[100dvh] w-full bg-[#07130a] text-emerald-100 flex flex-col items-center p-3 sm:p-6 pb-8 relative overflow-y-auto overflow-x-hidden" style={{ WebkitOverflowScrolling: "touch" }}>
       {/* Background felt texture & subtle gradient rings */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#11381d] via-[#091f11] to-[#040c06] -z-10" />
 
       {/* Top Bar for Auth State - Hidden per user request for now */}
 
-      <div className="w-full max-w-md bg-[#0a1a0f]/95 border border-emerald-800/60 rounded-3xl p-4 sm:p-7 shadow-2xl backdrop-blur-md space-y-4 sm:space-y-5 my-auto">
+      <div className="w-full max-w-md bg-[#0a1a0f]/95 border border-emerald-800/60 rounded-3xl p-4 sm:p-7 shadow-2xl backdrop-blur-md space-y-4 sm:space-y-5 py-6 my-auto">
         {/* Brand Header */}
         <div className="text-center space-y-1">
           <div className="inline-flex items-center justify-center gap-2 mb-1">
