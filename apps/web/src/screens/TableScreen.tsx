@@ -111,7 +111,7 @@ export const TableScreen: React.FC = () => {
               className="text-[9px] font-mono tracking-wider uppercase mt-0.5 opacity-80"
               style={{ color: "var(--felt-text)" }}
             >
-              Insurance Pays 2 to 1
+              Insurance Pays 2 to 1 • Table #{currentView.roomCode}
             </span>
           </div>
 

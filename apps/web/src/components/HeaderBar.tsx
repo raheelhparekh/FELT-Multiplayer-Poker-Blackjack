@@ -127,21 +127,21 @@ export const HeaderBar: React.FC = () => {
   return (
     <header className="h-14 bg-black/70 backdrop-blur-md border-b border-emerald-900/40 px-2 sm:px-3 flex items-center justify-between z-30 select-none">
       {/* Left: Room Code & Connection */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         <button
           type="button"
           onClick={handleCopyCode}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-950/70 border border-emerald-800/50 hover:bg-emerald-900/60 active:scale-95 transition-all text-xs font-mono font-bold tracking-wider text-emerald-100"
+          className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-md bg-emerald-950/80 border border-emerald-800/60 hover:bg-emerald-900/60 active:scale-95 transition-all text-xs font-mono font-bold tracking-wider text-emerald-100 shrink-0"
           title="Click to copy Room Code"
         >
-          <span className="text-emerald-400">TABLE</span>
-          <span className="text-gold-300 font-black">{roomCode || currentView.roomCode}</span>
-          <span className="text-[10px] text-emerald-400/80">{copied ? "✓ Copied" : "📋"}</span>
+          <span className="text-emerald-400 text-[10px] sm:text-xs">TABLE</span>
+          <span className="text-gold-300 font-black tracking-widest">{roomCode || currentView.roomCode}</span>
+          <span className="text-[10px] text-emerald-400/80">{copied ? "✓" : "📋"}</span>
         </button>
 
         {/* Connection status indicator */}
         <div
-          className={`w-2 h-2 rounded-full ${
+          className={`w-2 h-2 rounded-full shrink-0 ${
             connectionStatus === "connected"
               ? "bg-emerald-400 shadow-[0_0_8px_#10b981]"
               : connectionStatus === "connecting"
@@ -153,9 +153,9 @@ export const HeaderBar: React.FC = () => {
       </div>
 
       {/* Center: Phase, Round & Live Moving Timer */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0">
         <span
-          className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${badge.color}`}
+          className={`px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold tracking-wider uppercase border truncate ${badge.color}`}
         >
           {badge.text}
         </span>
@@ -163,7 +163,7 @@ export const HeaderBar: React.FC = () => {
         {/* Live moving timer pill */}
         {timer.seconds !== null && !currentView.isPaused && (
           <span
-            className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold border transition-all ${
+            className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold border transition-all shrink-0 ${
               timer.isUrgent
                 ? "bg-rose-950/90 text-rose-300 border-rose-500 animate-urgent-timer shadow-[0_0_10px_rgba(239,68,68,0.5)]"
                 : "bg-black/60 text-amber-300 border-amber-500/40"
@@ -174,23 +174,23 @@ export const HeaderBar: React.FC = () => {
         )}
 
         {currentView.isPaused && currentView.pausedRemainingMs && (
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-500/40">
+          <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-500/40 shrink-0">
             ⏸ {Math.ceil(currentView.pausedRemainingMs / 1000)}s
           </span>
         )}
 
         {round > 0 && (
-          <span className="text-xs text-emerald-400/80 font-mono hidden sm:inline">R{round}</span>
+          <span className="text-xs text-emerald-400/80 font-mono hidden sm:inline shrink-0">R{round}</span>
         )}
       </div>
 
       {/* Right: Modals, Theme Switcher & Controls */}
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
         {/* Quick Casino Felt Color Switcher */}
         <button
           type="button"
           onClick={handleFeltColorClick}
-          className="h-[36px] px-2 rounded-lg bg-black/60 border border-emerald-800/40 hover:border-gold-400/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 text-xs text-white"
+          className="h-[32px] sm:h-[36px] px-1.5 sm:px-2 rounded-lg bg-black/60 border border-emerald-800/40 hover:border-gold-400/60 active:scale-95 transition-all flex items-center justify-center gap-1 text-xs text-white"
           title={
             isHost
               ? `Felt Color: ${activeThemeMeta?.feltLabel} (Tap to change for all players)`
@@ -211,11 +211,11 @@ export const HeaderBar: React.FC = () => {
         <button
           type="button"
           onClick={() => openModal("chat")}
-          className="relative min-w-[36px] h-[36px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
+          className="relative min-w-[32px] sm:min-w-[36px] h-[32px] sm:h-[36px] px-1.5 sm:px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
           title="Chat & Activity Log"
           aria-label="Chat & Activity Log"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-3.5 sm:w-4 h-3.5 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <title>Chat and Activity</title>
             <path
               strokeLinecap="round"
@@ -225,7 +225,7 @@ export const HeaderBar: React.FC = () => {
             />
           </svg>
           {unreadChatCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-amber-500 text-black text-[10px] font-black rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center shadow">
+            <span className="absolute -top-1 -right-1 bg-amber-500 text-black text-[9px] font-black rounded-full h-3.5 sm:h-4 min-w-[14px] sm:min-w-[16px] px-1 flex items-center justify-center shadow">
               {unreadChatCount > 9 ? "9+" : unreadChatCount}
             </span>
           )}
@@ -235,11 +235,11 @@ export const HeaderBar: React.FC = () => {
         <button
           type="button"
           onClick={() => openModal("standings")}
-          className="min-w-[36px] h-[36px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-gold-300 flex items-center justify-center active:scale-95 transition-all"
+          className="min-w-[32px] sm:min-w-[36px] h-[32px] sm:h-[36px] px-1.5 sm:px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-gold-300 flex items-center justify-center active:scale-95 transition-all"
           title="Standings & Chip Counts"
           aria-label="Standings"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-3.5 sm:w-4 h-3.5 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <title>Standings</title>
             <path
               strokeLinecap="round"
@@ -255,12 +255,12 @@ export const HeaderBar: React.FC = () => {
           <button
             type="button"
             onClick={() => openModal("host")}
-            className="min-w-[36px] h-[36px] px-2 rounded-lg bg-amber-950/60 border border-amber-600/50 hover:bg-amber-900/50 text-amber-300 flex items-center justify-center active:scale-95 transition-all"
+            className="min-w-[32px] sm:min-w-[36px] h-[32px] sm:h-[36px] px-1.5 sm:px-2 rounded-lg bg-amber-950/60 border border-amber-600/50 hover:bg-amber-900/50 text-amber-300 flex items-center justify-center active:scale-95 transition-all"
             title="Host Controls"
             aria-label="Host Controls"
           >
-            <span className="text-xs mr-1 hidden sm:inline font-bold">HOST</span>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="text-[11px] mr-1 hidden sm:inline font-bold">HOST</span>
+            <svg className="w-3.5 sm:w-4 h-3.5 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <title>Host Controls</title>
               <path
                 strokeLinecap="round"
@@ -282,11 +282,11 @@ export const HeaderBar: React.FC = () => {
         <button
           type="button"
           onClick={() => openModal("settings")}
-          className="min-w-[36px] h-[36px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
+          className="min-w-[32px] sm:min-w-[36px] h-[32px] sm:h-[36px] px-1.5 sm:px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
           title="Settings & Audio"
           aria-label="Settings"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-3.5 sm:w-4 h-3.5 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <title>Settings</title>
             <path
               strokeLinecap="round"
@@ -305,7 +305,7 @@ export const HeaderBar: React.FC = () => {
               leaveRoom();
             }
           }}
-          className="min-w-[34px] h-[34px] px-1.5 rounded-lg bg-zinc-900/60 border border-zinc-700/50 hover:bg-rose-950/60 hover:border-rose-800/60 text-zinc-400 hover:text-rose-300 flex items-center justify-center active:scale-95 transition-all text-xs"
+          className="min-w-[30px] sm:min-w-[34px] h-[32px] sm:h-[34px] px-1 sm:px-1.5 rounded-lg bg-zinc-900/60 border border-zinc-700/50 hover:bg-rose-950/60 hover:border-rose-800/60 text-zinc-400 hover:text-rose-300 flex items-center justify-center active:scale-95 transition-all text-xs"
           title="Leave Table"
           aria-label="Leave Table"
         >
