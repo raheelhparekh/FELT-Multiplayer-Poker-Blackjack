@@ -5,7 +5,7 @@
 @layer base {
   :root,
   [data-theme="classic-green"] {
-    --felt-bg: #07190c;
+    --felt-bg: #051208;
     --felt-surface-from: #195a32;
     --felt-surface-via: #0f3d20;
     --felt-surface-to: #07190c;
@@ -13,17 +13,56 @@
     --felt-text: #a8c7b5;
     --felt-accent: #d4af37;
     --accent-glow: rgba(212, 175, 55, 0.4);
+    --table-marking: rgba(212, 175, 55, 0.3);
   }
 
+  [data-theme="royal-blue"] {
+    --felt-bg: #030d1a;
+    --felt-surface-from: #154273;
+    --felt-surface-via: #092849;
+    --felt-surface-to: #041224;
+    --felt-rail: #071a30;
+    --felt-text: #bfdbfe;
+    --felt-accent: #60a5fa;
+    --accent-glow: rgba(96, 165, 250, 0.45);
+    --table-marking: rgba(147, 197, 253, 0.35);
+  }
+
+  [data-theme="ruby-red"] {
+    --felt-bg: #140307;
+    --felt-surface-from: #6b1426;
+    --felt-surface-via: #3d0b17;
+    --felt-surface-to: #1c050b;
+    --felt-rail: #2a060e;
+    --felt-text: #fecdd3;
+    --felt-accent: #fb7185;
+    --accent-glow: rgba(251, 113, 133, 0.45);
+    --table-marking: rgba(254, 205, 211, 0.35);
+  }
+
+  [data-theme="midnight-onyx"],
   [data-theme="dark-luxury"] {
-    --felt-bg: #09090b;
-    --felt-surface-from: #271217;
-    --felt-surface-via: #180d11;
-    --felt-surface-to: #0c080a;
-    --felt-rail: #1c1917;
-    --felt-text: #e2d9d2;
+    --felt-bg: #08090b;
+    --felt-surface-from: #252a33;
+    --felt-surface-via: #15181e;
+    --felt-surface-to: #090a0d;
+    --felt-rail: #0d0f13;
+    --felt-text: #e2e8f0;
     --felt-accent: #f0d060;
-    --accent-glow: rgba(240, 208, 96, 0.4);
+    --accent-glow: rgba(240, 208, 96, 0.45);
+    --table-marking: rgba(240, 208, 96, 0.35);
+  }
+
+  [data-theme="imperial-purple"] {
+    --felt-bg: #0d0314;
+    --felt-surface-from: #4a1d6a;
+    --felt-surface-via: #2c1040;
+    --felt-surface-to: #13061f;
+    --felt-rail: #1e082b;
+    --felt-text: #e9d5ff;
+    --felt-accent: #c084fc;
+    --accent-glow: rgba(192, 132, 252, 0.45);
+    --table-marking: rgba(233, 213, 255, 0.35);
   }
 
   html,
@@ -36,6 +75,9 @@
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
+    height: 100%;
+    min-height: 100dvh;
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
 }
 
@@ -134,4 +176,21 @@
 
 .animate-turn-pulse {
   animation: turn-pulse 1.8s infinite;
+}
+
+/* Urgent Timer Pulse (last 5 seconds) */
+@keyframes urgent-timer-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    transform: scale(1.05);
+  }
+}
+
+.animate-urgent-timer {
+  animation: urgent-timer-pulse 0.9s infinite ease-in-out;
 }

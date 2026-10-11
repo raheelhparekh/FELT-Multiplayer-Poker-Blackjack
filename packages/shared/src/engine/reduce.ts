@@ -837,13 +837,24 @@ function reduceAdjustChips(
 }
 
 function reduceUpdateConfig(state: GameState, configPatch: Partial<RoomConfig>): ReducerResult {
-  // Mid-round: queue the change
-  if (state.phase !== "betting" && state.phase !== "round_summary" && state.phase !== "lobby") {
-    const pendingConfig = { ...state.pendingConfig, ...configPatch };
-    return ok({ ...state, pendingConfig }, []);
+  // If tableTheme changed, apply it immediately to config so UI changes in real-time
+  const immediateTheme = configPatch.tableTheme;
+  const stateWithTheme = immediateTheme
+    ? { ...state, config: { ...state.config, tableTheme: immediateTheme } }
+    : state;
+
+  // Mid-round: queue gameplay changes
+  if (
+    stateWithTheme.phase !== "betting" &&
+    stateWithTheme.phase !== "round_summary" &&
+    stateWithTheme.phase !== "lobby"
+  ) {
+    const pendingConfig = { ...stateWithTheme.pendingConfig, ...configPatch };
+    return ok({ ...stateWithTheme, pendingConfig }, []);
   }
+
   // Between rounds: apply immediately
-  const merged = { ...state.config, ...configPatch };
+  const merged = { ...stateWithTheme.config, ...configPatch };
   const parsed = RoomConfigSchema.safeParse(merged);
   if (!parsed.success) {
     throw new EngineError(
@@ -851,11 +862,15 @@ function reduceUpdateConfig(state: GameState, configPatch: Partial<RoomConfig>):
       `Invalid config: ${JSON.stringify(parsed.error.issues)}`,
     );
   }
-  let shoe = state.shoe;
-  if (state.phase === "lobby" && configPatch.decks && configPatch.decks !== state.config.decks) {
+  let shoe = stateWithTheme.shoe;
+  if (
+    stateWithTheme.phase === "lobby" &&
+    configPatch.decks &&
+    configPatch.decks !== stateWithTheme.config.decks
+  ) {
     shoe = buildShoe(parsed.data.decks, parsed.data.penetration);
   }
-  return ok({ ...state, config: parsed.data, shoe }, []);
+  return ok({ ...stateWithTheme, config: parsed.data, shoe }, []);
 }
 
 function reduceRebuy(state: GameState, playerId: string, customAmount?: number): ReducerResult {
@@ -863,8 +878,9 @@ function reduceRebuy(state: GameState, playerId: string, customAmount?: number):
   if (!state.config.rebuyEnabled) {
     throw new EngineError("ILLEGAL_ACTION", "Rebuys are disabled");
   }
-  const rebuyAmount =
+  const rawRebuy =
     customAmount !== undefined && customAmount > 0 ? customAmount : state.config.rebuyAmount;
+  const rebuyAmount = Math.min(20000, rawRebuy);
   const stacks = new Map(state.stacks);
   const totalBuyIns = new Map(state.totalBuyIns);
   const rebuys = new Map(state.rebuys ?? []);

@@ -285,4 +285,78 @@ describe("Chat, Rebuy & Rate Limiting", () => {
     host.disconnect();
     player.disconnect();
   });
+
+  it("rejects rebuy requests exceeding 20,000 chips", async () => {
+    const host = new TestClient("Host");
+    const player = new TestClient("Player");
+    await host.connect(serverUrl);
+    await player.connect(serverUrl);
+
+    const { roomCode } = await host.createRoom({
+      displayName: "Alice",
+      avatarId: "av-1",
+    });
+
+    await player.joinRoom({
+      code: roomCode,
+      displayName: "Bob",
+      avatarId: "av-2",
+    });
+
+    await player.sit(1);
+    await player.waitForSnapshot((s) => s.participants.some((p) => p.seat === 1));
+
+    // Attempt to request 25,000 chips (> 20k)
+    let errorReceived = false;
+    try {
+      await player.rebuyRequest(25000);
+    } catch (err: unknown) {
+      errorReceived = true;
+      expect(String(err)).toContain("Cannot request more than 20,000 chips");
+    }
+    expect(errorReceived).toBe(true);
+
+    host.disconnect();
+    player.disconnect();
+  });
+
+  it("informs all players when host updates table settings (theme, max bet capped at 5k)", async () => {
+    const host = new TestClient("Host");
+    const player = new TestClient("Player");
+    await host.connect(serverUrl);
+    await player.connect(serverUrl);
+
+    const { roomCode } = await host.createRoom({
+      displayName: "Alice",
+      avatarId: "av-1",
+    });
+
+    await player.joinRoom({
+      code: roomCode,
+      displayName: "Bob",
+      avatarId: "av-2",
+    });
+
+    await player.waitForSnapshot((s) => s.participants.length === 2);
+
+    // Host changes table theme to royal-blue and maxBet to 5000
+    await host.updateConfig({ tableTheme: "royal-blue", maxBet: 5000 });
+
+    const playerSnap = await player.waitForSnapshot(
+      (s) => s.config.tableTheme === "royal-blue" && s.config.maxBet === 5000,
+    );
+    expect(playerSnap.config.tableTheme).toBe("royal-blue");
+    expect(playerSnap.config.maxBet).toBe(5000);
+
+    // Both players received announcements in chat and notifications
+    await player.waitForSnapshot((_s) => player.receivedChats.length >= 1);
+    const systemChat = player.receivedChats.find((c) => c.senderId === "system");
+    expect(systemChat).toBeDefined();
+    expect(systemChat?.text).toContain("Host updated table settings");
+    expect(systemChat?.text).toContain("Table felt changed to Bellagio Sapphire Blue");
+    expect(systemChat?.text).toContain("Max Bet set to ₹5,000");
+
+    host.disconnect();
+    player.disconnect();
+  });
 });

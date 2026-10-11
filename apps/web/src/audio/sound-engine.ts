@@ -351,17 +351,28 @@ class SoundEngine {
         }
 
         case "chat_pop": {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = "sine";
-          osc.frequency.setValueAtTime(700, now);
-          osc.frequency.exponentialRampToValueAtTime(1100, now + 0.04);
-          gain.gain.setValueAtTime(0.2 * vol, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.06);
+          // Crisp dual-tone casino chime (659Hz E5 -> 987Hz B5)
+          const osc1 = ctx.createOscillator();
+          const gain1 = ctx.createGain();
+          osc1.type = "sine";
+          osc1.frequency.setValueAtTime(659.25, now);
+          gain1.gain.setValueAtTime(0.28 * vol, now);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+          osc1.connect(gain1);
+          gain1.connect(ctx.destination);
+          osc1.start(now);
+          osc1.stop(now + 0.09);
+
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = "sine";
+          osc2.frequency.setValueAtTime(987.77, now + 0.05);
+          gain2.gain.setValueAtTime(0.32 * vol, now + 0.05);
+          gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start(now + 0.05);
+          osc2.stop(now + 0.17);
           break;
         }
       }

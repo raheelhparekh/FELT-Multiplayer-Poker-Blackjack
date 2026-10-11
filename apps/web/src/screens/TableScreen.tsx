@@ -77,7 +77,7 @@ export const TableScreen: React.FC = () => {
   return (
     <div
       onClickCapture={() => soundEngine.unlock()}
-      className="relative flex flex-col h-screen w-full bg-[#051108] text-emerald-100 overflow-hidden select-none"
+      className="relative flex flex-col h-[100dvh] w-full bg-[var(--felt-bg)] text-[var(--felt-text)] overflow-hidden select-none transition-colors duration-500"
     >
       {/* Top Header */}
       <HeaderBar />
@@ -85,16 +85,32 @@ export const TableScreen: React.FC = () => {
       {/* Main Felt Canvas */}
       <main className="flex-1 relative flex flex-col overflow-y-auto overflow-x-hidden p-2 sm:p-4">
         {/* Felt Table Surface Background & Horseshoe Border */}
-        <div className="relative flex-1 w-full max-w-5xl mx-auto rounded-[3rem] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#195a32] via-[#0f3d20] to-[#07190c] border-[6px] border-[#0c2214] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.6)] flex flex-col justify-between p-3 sm:p-6 pb-2">
+        <div
+          className="relative flex-1 w-full max-w-5xl mx-auto rounded-[2.5rem] sm:rounded-[3rem] border-[6px] shadow-[inset_0_0_90px_rgba(0,0,0,0.85),0_10px_35px_rgba(0,0,0,0.7)] flex flex-col justify-between p-2.5 sm:p-6 pb-2 transition-all duration-500"
+          style={{
+            background:
+              "radial-gradient(ellipse at top, var(--felt-surface-from) 0%, var(--felt-surface-via) 55%, var(--felt-surface-to) 100%)",
+            borderColor: "var(--felt-rail)",
+          }}
+        >
           {/* Subtle Casino Table Markings */}
-          <div className="absolute inset-x-0 top-1/3 flex flex-col items-center justify-center pointer-events-none opacity-25 text-center">
-            <span className="text-xs sm:text-sm font-black tracking-[0.25em] text-gold-300 uppercase">
+          <div className="absolute inset-x-0 top-1/3 flex flex-col items-center justify-center pointer-events-none opacity-30 text-center">
+            <span
+              className="text-xs sm:text-sm font-black tracking-[0.25em] uppercase"
+              style={{ color: "var(--felt-accent)" }}
+            >
               Blackjack Pays {config.blackjackPayout}
             </span>
-            <span className="text-[10px] sm:text-xs font-semibold tracking-widest text-emerald-300 uppercase mt-0.5">
+            <span
+              className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase mt-0.5"
+              style={{ color: "var(--felt-text)" }}
+            >
               Dealer must stand on 17 and draw to 16
             </span>
-            <span className="text-[9px] font-mono tracking-wider text-emerald-400/80 uppercase mt-0.5">
+            <span
+              className="text-[9px] font-mono tracking-wider uppercase mt-0.5 opacity-80"
+              style={{ color: "var(--felt-text)" }}
+            >
               Insurance Pays 2 to 1
             </span>
           </div>
@@ -120,10 +136,8 @@ export const TableScreen: React.FC = () => {
             />
           </div>
 
-          {/* Table Paused / Waiting for Reconnect / Status Message Banner */}
-          {(currentView.isPaused ||
-            currentView.waitingForReconnect ||
-            currentView.tableStatusMessage) && (
+          {/* Table Paused / Waiting for Reconnect Banner */}
+          {(currentView.isPaused || currentView.waitingForReconnect) && (
             <div className="relative z-20 mx-auto mb-2 flex flex-wrap items-center justify-center gap-2 bg-amber-950/90 border border-amber-500/80 px-4 py-2 rounded-2xl text-xs text-amber-100 shadow-xl backdrop-blur max-w-lg text-center animate-fade-in">
               <span className="text-base shrink-0">⏸</span>
               <div className="flex-1 min-w-[200px]">

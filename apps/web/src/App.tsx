@@ -7,6 +7,7 @@ import { LandingScreen } from "./screens/LandingScreen";
 import { LobbyScreen } from "./screens/LobbyScreen";
 import { TableScreen } from "./screens/TableScreen";
 import { useGameStore } from "./store/game-store";
+import { useSettingsStore } from "./store/settings-store";
 
 const RoomRoute: React.FC = () => {
   const { roomCode } = useParams<{ roomCode: string }>();
@@ -61,6 +62,14 @@ const RoomRoute: React.FC = () => {
       navigate("/");
     }
   }, [storeRoomCode, attemptedJoin, navigate]);
+
+  // Synchronize room table theme across all players in room
+  useEffect(() => {
+    if (currentView?.config?.tableTheme) {
+      document.documentElement.setAttribute("data-theme", currentView.config.tableTheme);
+      useSettingsStore.setState({ theme: currentView.config.tableTheme });
+    }
+  }, [currentView?.config?.tableTheme]);
 
   // If opening an invite link for the first time without a profile, prompt for name & avatar
   if (!currentView && !hasTokenForRoom && !hasSavedProfile) {

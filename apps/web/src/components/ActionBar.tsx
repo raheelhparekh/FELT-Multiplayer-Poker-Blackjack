@@ -1,8 +1,8 @@
 import type { Card, ClientGameView, ClientHand, Participant } from "@felt/shared";
 import { evaluateHand } from "@felt/shared";
 import type React from "react";
-import { useEffect, useState } from "react";
 import { soundEngine } from "../audio/sound-engine";
+import { useCountdownTimer } from "../hooks/useCountdownTimer";
 import { useGameStore } from "../store/game-store";
 import { ChipTray } from "./ChipTray";
 
@@ -41,37 +41,40 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onSplit,
   onInsurance,
 }) => {
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const activeHand = view.hands.find((h: ClientHand) => h.id === view.activeHandId);
+  const isMyTurn = Boolean(activeHand && activeHand.playerId === myPlayerId);
 
-  // Countdown timer for betDeadline or actionDeadline
-  useEffect(() => {
-    const deadline = view.phase === "betting" ? view.betDeadline : view.actionDeadline;
+  // Active deadline based on current game phase
+  const currentDeadline =
+    view.phase === "betting"
+      ? view.betDeadline
+      : view.phase === "insurance"
+        ? view.insuranceDeadline
+        : view.phase === "player_turns"
+          ? view.actionDeadline
+          : null;
 
-    if (!deadline) {
-      setTimeLeft(null);
-      return;
-    }
+  const totalDurationSec =
+    view.phase === "betting"
+      ? (view.config.betTimerSec ?? 30)
+      : view.phase === "insurance"
+        ? 15
+        : (view.config.actionTimerSec ?? 30);
 
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-      setTimeLeft(remaining);
-
-      // Play soft tick during final 5 seconds if it's my turn
-      if (remaining <= 5 && remaining > 0) {
-        soundEngine.play("timer_tick");
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [view.phase, view.betDeadline, view.actionDeadline]);
+  const timer = useCountdownTimer({
+    deadline: currentDeadline,
+    isPaused: view.isPaused,
+    pausedRemainingMs: view.pausedRemainingMs,
+    totalDurationSec,
+    playTickAudio: Boolean(isMyTurn && view.phase === "player_turns"),
+    resetKey: `${view.phase}-${view.activeHandId ?? ""}-${currentDeadline ?? 0}`,
+  });
 
   if (!myPlayerId) return null;
 
   const myParticipant = view.participants.find((p: Participant) => p.id === myPlayerId);
   const isSeated = myParticipant?.seat !== null;
   const myHands = view.hands.filter((h: ClientHand) => h.playerId === myPlayerId);
-  const activeHand = view.hands.find((h: ClientHand) => h.id === view.activeHandId);
-  const isMyTurn = activeHand && activeHand.playerId === myPlayerId;
 
   const handleHit = (handId: string) => {
     soundEngine.play("card_deal");
@@ -107,7 +110,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     if (!isSeated) {
       return (
         <div className="w-full max-w-xl mx-auto p-3 bg-black/80 rounded-2xl border border-emerald-900/60 text-center text-xs text-emerald-400">
-          You are spectating. Take an open seat to join the next round!
+          You are spectating. Take an open seat to join the next round!{" "}
+          {timer.seconds !== null && (
+            <span className="text-gold-300 font-mono">({timer.formatted})</span>
+          )}
         </div>
       );
     }
@@ -122,9 +128,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <span className="text-xs text-gold-300 font-bold block mb-0.5">
             ✓ Bet of ₹{lockedAmount} is locked in!
           </span>
-          <span className="text-[11px] text-emerald-400/60 font-mono">
-            Waiting for cards to be dealt... {timeLeft !== null && `(${timeLeft}s)`}
+          <span className="text-[11px] text-emerald-400/70 font-mono">
+            Waiting for cards to be dealt...{" "}
+            {timer.seconds !== null && (
+              <span className="text-gold-300 font-bold font-mono">({timer.formatted})</span>
+            )}
           </span>
+          {timer.seconds !== null && (
+            <div className="w-48 mx-auto mt-2 h-1 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gold-400 transition-all duration-150"
+                style={{ width: `${Math.round(timer.fraction * 100)}%` }}
+              />
+            </div>
+          )}
         </div>
       );
     }
@@ -133,7 +150,25 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     const canLock = currentBet >= view.config.minBet && currentBet <= view.config.maxBet;
 
     return (
-      <div className="w-full max-w-lg mx-auto flex flex-col items-center gap-1">
+      <div className="w-full max-w-lg mx-auto flex flex-col items-center gap-1.5 px-2">
+        {/* Live betting timer bar above chips */}
+        {timer.seconds !== null && (
+          <div className="w-full flex items-center justify-between px-2 text-[11px] font-mono text-emerald-300/80">
+            <span className="flex items-center gap-1">
+              <span>⏳</span> Place your bets:
+            </span>
+            <span
+              className={`font-bold px-2 py-0.5 rounded-full border ${
+                timer.isUrgent
+                  ? "bg-rose-950 text-rose-300 border-rose-500 animate-pulse"
+                  : "bg-emerald-950/70 text-gold-300 border-emerald-700/50"
+              }`}
+            >
+              {timer.formatted}
+            </span>
+          </div>
+        )}
+
         {myStack < view.config.minBet && (
           <button
             type="button"
@@ -144,6 +179,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             <span>Out of Chips! Request More from Dealer</span>
           </button>
         )}
+
         <ChipTray
           denominations={view.config.chipDenominations}
           selectedChip={selectedChip}
@@ -159,6 +195,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           maxBet={view.config.maxBet}
           disabled={myStack === 0}
         />
+
         <button
           type="button"
           onClick={onBetSitOut}
@@ -181,9 +218,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <div className="w-full max-w-md mx-auto p-4 bg-black/90 rounded-3xl border border-amber-500/60 shadow-2xl flex flex-col items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-amber-400 font-bold text-sm">🛡️ Insurance Offered</span>
-            {timeLeft !== null && (
-              <span className="text-xs font-mono font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-500/40">
-                {timeLeft}s
+            {timer.seconds !== null && (
+              <span
+                className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full border ${
+                  timer.isUrgent
+                    ? "bg-rose-950 text-rose-300 border-rose-500 animate-pulse"
+                    : "bg-amber-950/80 text-amber-300 border-amber-500/40"
+                }`}
+              >
+                ⏱ {timer.formatted}
               </span>
             )}
           </div>
@@ -211,8 +254,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     }
 
     return (
-      <div className="w-full max-w-sm mx-auto p-2.5 bg-black/80 rounded-2xl border border-emerald-900/60 text-center text-xs text-emerald-400">
-        Waiting for insurance decisions...
+      <div className="w-full max-w-sm mx-auto p-2.5 bg-black/80 rounded-2xl border border-emerald-900/60 text-center text-xs text-emerald-400 flex items-center justify-between px-4">
+        <span>Waiting for insurance decisions...</span>
+        {timer.seconds !== null && (
+          <span className="font-mono font-bold text-amber-300">⏱ {timer.formatted}</span>
+        )}
       </div>
     );
   }
@@ -236,10 +282,21 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       const activeName = activePlayer ? activePlayer.displayName : "player";
 
       return (
-        <div className="w-full max-w-sm mx-auto p-2.5 bg-black/80 rounded-2xl border border-emerald-900/60 text-center shadow">
+        <div className="w-full max-w-sm mx-auto p-2.5 bg-black/80 rounded-2xl border border-emerald-900/60 text-center shadow flex items-center justify-between px-4">
           <span className="text-xs text-emerald-300">
             Waiting for <strong className="text-gold-300">{activeName}</strong> to act...
           </span>
+          {timer.seconds !== null && (
+            <span
+              className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                timer.isUrgent
+                  ? "bg-rose-950 text-rose-300 border-rose-500 animate-urgent-timer"
+                  : "bg-emerald-950/80 text-emerald-300 border-emerald-500/40"
+              }`}
+            >
+              ⏱ {timer.formatted}
+            </span>
+          )}
         </div>
       );
     }
@@ -271,24 +328,52 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       activeHand.cards[0].card.rank === activeHand.cards[1].card.rank;
 
     return (
-      <div className="w-full max-w-md mx-auto p-3 bg-black/90 backdrop-blur-md rounded-3xl border border-gold-400/60 shadow-2xl flex flex-col items-center gap-2.5 animate-turn-pulse">
+      <div
+        className={`w-full max-w-md mx-auto p-3 bg-black/90 backdrop-blur-md rounded-3xl border shadow-2xl flex flex-col items-center gap-2.5 ${
+          timer.isUrgent
+            ? "border-rose-500/80 shadow-[0_0_25px_rgba(239,68,68,0.3)] animate-urgent-timer"
+            : "border-gold-400/60 animate-turn-pulse"
+        }`}
+      >
         <div className="flex items-center justify-between w-full px-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-gold-300 font-black tracking-wide">YOUR TURN!</span>
-            {timeLeft !== null && (
-              <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-500/40">
-                {timeLeft}s
+            {timer.seconds !== null && (
+              <span
+                className={`text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border transition-all ${
+                  timer.isUrgent
+                    ? "bg-rose-950 text-rose-200 border-rose-400 font-black animate-pulse"
+                    : "bg-amber-950/90 text-amber-300 border-amber-500/50"
+                }`}
+              >
+                ⏱ {timer.formatted}
               </span>
             )}
           </div>
-          <span className="text-emerald-400/80 font-mono">Bet: ₹{activeHand.bet}</span>
+          <span className="text-emerald-400/90 font-mono font-semibold">
+            Bet: ₹{activeHand.bet}
+          </span>
         </div>
+
+        {/* Animated countdown progress bar */}
+        {timer.seconds !== null && (
+          <div className="w-full h-1 bg-zinc-800/80 rounded-full overflow-hidden">
+            <div
+              className={`h-full transition-all duration-150 ${
+                timer.isUrgent
+                  ? "bg-gradient-to-r from-amber-500 to-rose-500"
+                  : "bg-gradient-to-r from-emerald-400 to-gold-400"
+              }`}
+              style={{ width: `${Math.round(timer.fraction * 100)}%` }}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
           <button
             type="button"
             onClick={() => handleHit(activeHand.id)}
-            className="py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-emerald-400/40"
+            className="py-3 sm:py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-emerald-400/40 min-h-[48px] flex items-center justify-center"
           >
             Hit
           </button>
@@ -296,7 +381,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <button
             type="button"
             onClick={() => handleStand(activeHand.id)}
-            className="py-3 rounded-2xl bg-rose-800 hover:bg-rose-700 text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-rose-600/40"
+            className="py-3 sm:py-3.5 rounded-2xl bg-rose-800 hover:bg-rose-700 active:bg-rose-900 text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-rose-600/40 min-h-[48px] flex items-center justify-center"
           >
             Stand
           </button>
@@ -305,7 +390,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             type="button"
             disabled={!canDouble}
             onClick={() => handleDouble(activeHand.id)}
-            className="py-3 rounded-2xl bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-xs sm:text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-amber-400/40"
+            className="py-3 sm:py-3.5 rounded-2xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 disabled:opacity-30 text-xs sm:text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-amber-400/40 min-h-[48px] flex items-center justify-center"
           >
             Double (₹{activeHand.bet})
           </button>
@@ -314,7 +399,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             type="button"
             disabled={!canSplit}
             onClick={() => handleSplit(activeHand.id)}
-            className="py-3 rounded-2xl bg-blue-700 hover:bg-blue-600 disabled:opacity-30 text-xs sm:text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-blue-500/40"
+            className="py-3 sm:py-3.5 rounded-2xl bg-blue-700 hover:bg-blue-600 active:bg-blue-800 disabled:opacity-30 text-xs sm:text-sm font-extrabold text-white shadow-lg transition-transform active:scale-95 border border-blue-500/40 min-h-[48px] flex items-center justify-center"
           >
             Split (₹{activeHand.bet})
           </button>

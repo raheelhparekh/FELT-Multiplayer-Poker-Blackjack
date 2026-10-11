@@ -1,7 +1,8 @@
-import type { Participant } from "@felt/shared";
+import type { Participant, TableTheme } from "@felt/shared";
 import type React from "react";
 import { useState } from "react";
 import { useGameStore } from "../../store/game-store";
+import { CASINO_THEMES } from "../../store/settings-store";
 
 export const HostPanelModal: React.FC = () => {
   const activeModal = useGameStore((s) => s.activeModal);
@@ -225,7 +226,7 @@ export const HostPanelModal: React.FC = () => {
                     onClick={() => hostApproveRebuy(p.id)}
                     className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-[11px] shadow transition-transform active:scale-95"
                   >
-                    Grant Rebuy (+₹{config.startingStack})
+                    Grant Rebuy (+₹{Math.min(20000, config.startingStack).toLocaleString()})
                   </button>
                 </div>
               ))}
@@ -443,10 +444,29 @@ export const HostPanelModal: React.FC = () => {
                 </select>
               </div>
 
+              <div className="col-span-2">
+                <span className="text-[10px] text-emerald-400 block mb-1">
+                  Table Felt Color Theme (Changes for all players)
+                </span>
+                <select
+                  aria-label="Table Felt Color Theme"
+                  value={config.tableTheme ?? "classic-green"}
+                  onChange={(e) => updateConfig({ tableTheme: e.target.value as TableTheme })}
+                  className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1.5 text-xs text-white"
+                >
+                  {CASINO_THEMES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.feltLabel})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <span className="text-[10px] text-emerald-400 block mb-1">Min Bet</span>
                 <input
                   type="number"
+                  min={1}
                   defaultValue={config.minBet}
                   onBlur={(e) => {
                     const val = Number.parseInt(e.target.value, 10);
@@ -457,13 +477,18 @@ export const HostPanelModal: React.FC = () => {
               </div>
 
               <div>
-                <span className="text-[10px] text-emerald-400 block mb-1">Max Bet</span>
+                <span className="text-[10px] text-emerald-400 block mb-1">Max Bet (Max ₹5,000)</span>
                 <input
                   type="number"
+                  min={1}
+                  max={5000}
                   defaultValue={config.maxBet}
                   onBlur={(e) => {
-                    const val = Number.parseInt(e.target.value, 10);
-                    if (val > 0) updateConfig({ maxBet: val });
+                    const raw = Number.parseInt(e.target.value, 10);
+                    if (raw > 0) {
+                      const val = Math.min(5000, Math.max(1, raw));
+                      updateConfig({ maxBet: val });
+                    }
                   }}
                   className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white"
                 />

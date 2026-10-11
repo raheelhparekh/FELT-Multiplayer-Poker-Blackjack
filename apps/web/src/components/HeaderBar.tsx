@@ -1,7 +1,9 @@
 import type React from "react";
 import { useEffect, useState } from "react";
+import { useCountdownTimer } from "../hooks/useCountdownTimer";
 import { useAuthStore } from "../store/auth-store";
 import { useGameStore } from "../store/game-store";
+import { CASINO_THEMES, useSettingsStore } from "../store/settings-store";
 import { AuthModal } from "./modals/AuthModal";
 import { HistoryModal } from "./modals/HistoryModal";
 
@@ -15,12 +17,36 @@ export const HeaderBar: React.FC = () => {
   const leaveRoom = useGameStore((s) => s.leaveRoom);
   const errorMessage = useGameStore((s) => s.errorMessage);
   const clearError = useGameStore((s) => s.clearError);
+  const updateConfig = useGameStore((s) => s.updateConfig);
+
+  const theme = useSettingsStore((s) => s.theme);
+  const cycleTheme = useSettingsStore((s) => s.cycleTheme);
+  const activeThemeMeta = CASINO_THEMES.find((t) => t.id === theme) ?? CASINO_THEMES[0];
 
   const _user = useAuthStore((s) => s.user);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const [copied, setCopied] = useState(false);
+
+  // Active deadline based on current game phase
+  const currentDeadline =
+    currentView?.phase === "betting"
+      ? currentView.betDeadline
+      : currentView?.phase === "insurance"
+        ? currentView.insuranceDeadline
+        : currentView?.phase === "player_turns"
+          ? currentView.actionDeadline
+          : null;
+
+  const timer = useCountdownTimer({
+    deadline: currentDeadline,
+    isPaused: currentView?.isPaused,
+    pausedRemainingMs: currentView?.pausedRemainingMs,
+    totalDurationSec: 30,
+    playTickAudio: false,
+    resetKey: `${currentView?.phase}-${currentView?.activeHandId ?? ""}-${currentDeadline ?? 0}`,
+  });
 
   useEffect(() => {
     if (!errorMessage) return;
@@ -43,9 +69,24 @@ export const HeaderBar: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleFeltColorClick = () => {
+    const validThemes = CASINO_THEMES.map((t) => t.id);
+    const currentTableTheme = (currentView?.config.tableTheme ?? theme) as (typeof validThemes)[number];
+    const currentIndex = validThemes.indexOf(currentTableTheme);
+    const nextIndex = (currentIndex + 1) % validThemes.length;
+    const nextTheme = validThemes[nextIndex] ?? "classic-green";
+
+    if (isHost) {
+      updateConfig({ tableTheme: nextTheme });
+    } else {
+      useGameStore.setState({
+        errorMessage: "Only the table host can change the felt color for the room.",
+      });
     }
   };
 
@@ -84,9 +125,9 @@ export const HeaderBar: React.FC = () => {
   const badge = getPhaseBadge();
 
   return (
-    <header className="h-14 bg-black/60 backdrop-blur border-b border-emerald-900/40 px-3 flex items-center justify-between z-30 select-none">
+    <header className="h-14 bg-black/70 backdrop-blur-md border-b border-emerald-900/40 px-2 sm:px-3 flex items-center justify-between z-30 select-none">
       {/* Left: Room Code & Connection */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={handleCopyCode}
@@ -111,25 +152,66 @@ export const HeaderBar: React.FC = () => {
         />
       </div>
 
-      {/* Center: Phase & Round */}
-      <div className="flex items-center gap-2">
+      {/* Center: Phase, Round & Live Moving Timer */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <span
           className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${badge.color}`}
         >
           {badge.text}
         </span>
+
+        {/* Live moving timer pill */}
+        {timer.seconds !== null && !currentView.isPaused && (
+          <span
+            className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold border transition-all ${
+              timer.isUrgent
+                ? "bg-rose-950/90 text-rose-300 border-rose-500 animate-urgent-timer shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                : "bg-black/60 text-amber-300 border-amber-500/40"
+            }`}
+          >
+            ⏱ {timer.formatted}
+          </span>
+        )}
+
+        {currentView.isPaused && currentView.pausedRemainingMs && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-500/40">
+            ⏸ {Math.ceil(currentView.pausedRemainingMs / 1000)}s
+          </span>
+        )}
+
         {round > 0 && (
           <span className="text-xs text-emerald-400/80 font-mono hidden sm:inline">R{round}</span>
         )}
       </div>
 
-      {/* Right: Modals & Controls */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
+      {/* Right: Modals, Theme Switcher & Controls */}
+      <div className="flex items-center gap-1 sm:gap-2">
+        {/* Quick Casino Felt Color Switcher */}
+        <button
+          type="button"
+          onClick={handleFeltColorClick}
+          className="h-[36px] px-2 rounded-lg bg-black/60 border border-emerald-800/40 hover:border-gold-400/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 text-xs text-white"
+          title={
+            isHost
+              ? `Felt Color: ${activeThemeMeta?.feltLabel} (Tap to change for all players)`
+              : `Felt Color: ${activeThemeMeta?.feltLabel} (Set by host for table)`
+          }
+          aria-label="Change Casino Felt Color"
+        >
+          <div
+            className="w-3.5 h-3.5 rounded-full border border-white/70 shadow-sm"
+            style={{ backgroundColor: activeThemeMeta?.fromColor }}
+          />
+          <span className="text-[10px] font-bold text-emerald-200 hidden md:inline">
+            {activeThemeMeta?.colorName}
+          </span>
+        </button>
+
         {/* Chat / Activity Button */}
         <button
           type="button"
           onClick={() => openModal("chat")}
-          className="relative min-w-[38px] h-[38px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
+          className="relative min-w-[36px] h-[36px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
           title="Chat & Activity Log"
           aria-label="Chat & Activity Log"
         >
@@ -153,7 +235,7 @@ export const HeaderBar: React.FC = () => {
         <button
           type="button"
           onClick={() => openModal("standings")}
-          className="min-w-[38px] h-[38px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-gold-300 flex items-center justify-center active:scale-95 transition-all"
+          className="min-w-[36px] h-[36px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-gold-300 flex items-center justify-center active:scale-95 transition-all"
           title="Standings & Chip Counts"
           aria-label="Standings"
         >
@@ -173,7 +255,7 @@ export const HeaderBar: React.FC = () => {
           <button
             type="button"
             onClick={() => openModal("host")}
-            className="min-w-[38px] h-[38px] px-2 rounded-lg bg-amber-950/60 border border-amber-600/50 hover:bg-amber-900/50 text-amber-300 flex items-center justify-center active:scale-95 transition-all"
+            className="min-w-[36px] h-[36px] px-2 rounded-lg bg-amber-950/60 border border-amber-600/50 hover:bg-amber-900/50 text-amber-300 flex items-center justify-center active:scale-95 transition-all"
             title="Host Controls"
             aria-label="Host Controls"
           >
@@ -196,13 +278,11 @@ export const HeaderBar: React.FC = () => {
           </button>
         )}
 
-        {/* User Account / History Button - Hidden per user request for now */}
-
         {/* Settings Button */}
         <button
           type="button"
           onClick={() => openModal("settings")}
-          className="min-w-[38px] h-[38px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
+          className="min-w-[36px] h-[36px] px-2 rounded-lg bg-emerald-950/60 border border-emerald-800/40 hover:bg-emerald-900/50 text-emerald-200 flex items-center justify-center active:scale-95 transition-all"
           title="Settings & Audio"
           aria-label="Settings"
         >
@@ -225,7 +305,7 @@ export const HeaderBar: React.FC = () => {
               leaveRoom();
             }
           }}
-          className="min-w-[34px] h-[34px] px-2 rounded-lg bg-zinc-900/60 border border-zinc-700/50 hover:bg-rose-950/60 hover:border-rose-800/60 text-zinc-400 hover:text-rose-300 flex items-center justify-center active:scale-95 transition-all text-xs"
+          className="min-w-[34px] h-[34px] px-1.5 rounded-lg bg-zinc-900/60 border border-zinc-700/50 hover:bg-rose-950/60 hover:border-rose-800/60 text-zinc-400 hover:text-rose-300 flex items-center justify-center active:scale-95 transition-all text-xs"
           title="Leave Table"
           aria-label="Leave Table"
         >

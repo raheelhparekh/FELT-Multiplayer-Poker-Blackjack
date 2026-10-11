@@ -227,9 +227,11 @@ export class Room {
     this.socketToPlayer.set(socket.id, playerId);
     this.playerTokens.set(playerId, token);
 
-    // Sync participant to engine state bankrolls (with custom buyIn if supplied)
-    const initialStack =
+    // Sync participant to engine state bankrolls (with custom buyIn if supplied; capped at 20,000 max)
+    const MAX_STARTING_BUY_IN = 20000;
+    const rawBuyIn =
       params.buyIn && params.buyIn > 0 ? params.buyIn : this.config.startingStack;
+    const initialStack = Math.min(MAX_STARTING_BUY_IN, Math.max(100, rawBuyIn));
     const stacks = new Map(this.state.stacks);
     const totalBuyIns = new Map(this.state.totalBuyIns);
     const initialBuyIns = new Map(this.state.initialBuyIns);
@@ -781,9 +783,70 @@ export class Room {
 
   public updateConfig(hostId: string, partialConfig: Partial<RoomConfig>): void {
     this.assertHost(hostId);
+
+    // Enforce 5,000 max bet cap and 20,000 chip caps
+    if (partialConfig.maxBet !== undefined) {
+      partialConfig.maxBet = Math.min(5000, Math.max(1, partialConfig.maxBet));
+    }
+    if (partialConfig.startingStack !== undefined) {
+      partialConfig.startingStack = Math.min(20000, Math.max(100, partialConfig.startingStack));
+    }
+    if (partialConfig.rebuyAmount !== undefined) {
+      partialConfig.rebuyAmount = Math.min(20000, Math.max(100, partialConfig.rebuyAmount));
+    }
+
     const result = PartialRoomConfigSchema.safeParse(partialConfig);
     if (!result.success) {
       throw new EngineError("ILLEGAL_ACTION", `Invalid config: ${result.error.message}`);
+    }
+
+    // Identify what changed to inform players
+    const changes: string[] = [];
+    if (partialConfig.tableTheme && partialConfig.tableTheme !== this.config.tableTheme) {
+      const themeNames: Record<string, string> = {
+        "classic-green": "Monte Carlo Emerald",
+        "royal-blue": "Bellagio Sapphire Blue",
+        "ruby-red": "Caesars Crimson Red",
+        "midnight-onyx": "Venetian Noir",
+        "imperial-purple": "Crown Velvet Amethyst",
+      };
+      changes.push(`Table felt changed to ${themeNames[partialConfig.tableTheme] ?? partialConfig.tableTheme}`);
+    }
+    if (partialConfig.decks !== undefined && partialConfig.decks !== this.config.decks) {
+      changes.push(`Decks changed to ${partialConfig.decks}`);
+    }
+    if (partialConfig.maxBet !== undefined && partialConfig.maxBet !== this.config.maxBet) {
+      changes.push(`Max Bet set to ₹${partialConfig.maxBet.toLocaleString()}`);
+    }
+    if (partialConfig.minBet !== undefined && partialConfig.minBet !== this.config.minBet) {
+      changes.push(`Min Bet set to ₹${partialConfig.minBet.toLocaleString()}`);
+    }
+    if (partialConfig.startingStack !== undefined && partialConfig.startingStack !== this.config.startingStack) {
+      changes.push(`Starting Stack set to ₹${partialConfig.startingStack.toLocaleString()}`);
+    }
+    if (partialConfig.rebuyAmount !== undefined && partialConfig.rebuyAmount !== this.config.rebuyAmount) {
+      changes.push(`Rebuy Amount set to ₹${partialConfig.rebuyAmount.toLocaleString()}`);
+    }
+    if (partialConfig.dealerHitsSoft17 !== undefined && partialConfig.dealerHitsSoft17 !== this.config.dealerHitsSoft17) {
+      changes.push(`Dealer Rule set to ${partialConfig.dealerHitsSoft17 ? "Hits Soft 17 (H17)" : "Stands on 17 (S17)"}`);
+    }
+    if (partialConfig.blackjackPayout !== undefined && partialConfig.blackjackPayout !== this.config.blackjackPayout) {
+      changes.push(`Blackjack Payout set to ${partialConfig.blackjackPayout}`);
+    }
+    if (partialConfig.actionTimerSec !== undefined && partialConfig.actionTimerSec !== this.config.actionTimerSec) {
+      changes.push(`Action Timer set to ${partialConfig.actionTimerSec}s`);
+    }
+
+    if (changes.length > 0) {
+      const announcement = `Host updated table settings: ${changes.join("; ")}`;
+      this.addActivity(announcement);
+      this.addSystemChatMessage(announcement);
+      this.broadcastTableNotification({
+        id: randomUUID(),
+        type: "info",
+        message: announcement,
+        timestamp: Date.now(),
+      });
     }
 
     this.dispatchEngineAction({
@@ -914,8 +977,9 @@ export class Room {
       }
     }
 
-    const rebuyAmount =
+    const rawRebuy =
       amount && amount > 0 ? amount : pendingTx ? pendingTx.amount : this.config.rebuyAmount;
+    const rebuyAmount = Math.min(20000, Math.max(100, rawRebuy));
 
     const target = this.participants.get(targetId);
     const name = target ? target.displayName : targetId;
@@ -1235,6 +1299,7 @@ export class Room {
       "player_turns",
       "dealer_turn",
       "settlement",
+      "round_summary",
     ];
     if (!allowedPhases.includes(phase)) {
       throw new EngineError("WRONG_PHASE", "No round in progress to cancel");
@@ -1514,10 +1579,15 @@ export class Room {
         break;
       }
       case "rebuy:request": {
+        const MAX_CHIP_REQUEST = 20000;
+        if (action.amount && action.amount > MAX_CHIP_REQUEST) {
+          throw new EngineError("ILLEGAL_ACTION", "Cannot request more than 20,000 chips at once");
+        }
         const p = this.participants.get(playerId);
         const name = p ? p.displayName : playerId;
-        const reqAmount =
+        const rawReq =
           action.amount && action.amount > 0 ? action.amount : this.config.rebuyAmount;
+        const reqAmount = Math.min(MAX_CHIP_REQUEST, Math.max(100, rawReq));
         const currentStack = this.state.stacks.get(playerId) ?? 0;
         if (this.config.rebuyRequiresHostApproval) {
           // Check if there is already a pending request for this player
@@ -1627,6 +1697,7 @@ export class Room {
 
   private dispatchEngineAction(action: GameAction): void {
     const prevPhase = this.state.phase;
+    const prevActiveHandId = this.state.activeHandId;
     const { state: nextState, events } = reduce(this.state, action);
     this.state = nextState;
 
@@ -1647,6 +1718,18 @@ export class Room {
 
     // Phase transition timer updates
     this.handlePhaseTransitions(prevPhase, nextState.phase);
+
+    // If still in player_turns and active hand changed or player hit, restart action timer
+    if (
+      prevPhase === "player_turns" &&
+      nextState.phase === "player_turns" &&
+      nextState.activeHandId &&
+      !this.state.isPaused
+    ) {
+      if (prevActiveHandId !== nextState.activeHandId || action.type === "play:hit" || action.type === "play:split") {
+        this.setupActionTimer();
+      }
+    }
 
     // Update table status message after every action
     this.updateTableStatusMessage();
@@ -1786,15 +1869,7 @@ export class Room {
           if (hand) {
             const p = this.participants.get(hand.playerId);
             const name = p?.displayName ?? hand.playerId;
-            if (this.state.actionDeadline) {
-              const secLeft = Math.max(
-                0,
-                Math.round((this.state.actionDeadline - Date.now()) / 1000),
-              );
-              msg = `${name}'s turn — ${secLeft}s remaining`;
-            } else {
-              msg = `${name}'s turn`;
-            }
+            msg = `${name}'s turn`;
           }
         }
         break;
@@ -2030,6 +2105,23 @@ export class Room {
       senderId: playerId,
       senderName: p.displayName,
       text: trimmed,
+    };
+
+    this.chatLog.push(message);
+    if (this.chatLog.length > ROOM.MAX_CHAT_LOG) {
+      this.chatLog.shift();
+    }
+
+    this.broadcastMessage("chat", { type: "chat", message });
+  }
+
+  public addSystemChatMessage(text: string): void {
+    const message: ChatMessage = {
+      seq: ++this.state.seq,
+      ts: Date.now(),
+      senderId: "system",
+      senderName: "Table System",
+      text,
     };
 
     this.chatLog.push(message);

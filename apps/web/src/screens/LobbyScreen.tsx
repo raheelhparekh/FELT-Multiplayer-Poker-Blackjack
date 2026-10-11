@@ -4,6 +4,7 @@ import { useState } from "react";
 import { HeaderBar } from "../components/HeaderBar";
 import { ChatDrawer } from "../components/modals/ChatDrawer";
 import { HostPanelModal } from "../components/modals/HostPanelModal";
+import { SettingsModal } from "../components/modals/SettingsModal";
 import { StandingsModal } from "../components/modals/StandingsModal";
 import { useGameStore } from "../store/game-store";
 import { AVATAR_OPTIONS } from "../types/avatars";
@@ -56,7 +57,7 @@ export const LobbyScreen: React.FC = () => {
   const seatedCount = participants.filter((p) => p.seat !== null).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#07140b] text-emerald-100 overflow-x-hidden">
+    <div className="min-h-[100dvh] flex flex-col bg-[var(--felt-bg)] text-[var(--felt-text)] overflow-x-hidden transition-colors duration-500">
       <HeaderBar />
 
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
@@ -351,15 +352,20 @@ export const LobbyScreen: React.FC = () => {
                 </div>
                 <div className="flex-1">
                   <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
-                    Max Bet
+                    Max Bet (Max ₹5,000)
                   </span>
                   {isHost ? (
                     <input
                       type="number"
+                      min={1}
+                      max={5000}
                       defaultValue={config.maxBet}
                       onBlur={(e) => {
-                        const val = Number.parseInt(e.target.value, 10);
-                        if (val > 0) updateConfig({ maxBet: val });
+                        const raw = Number.parseInt(e.target.value, 10);
+                        if (raw > 0) {
+                          const val = Math.min(5000, Math.max(1, raw));
+                          updateConfig({ maxBet: val });
+                        }
                       }}
                       className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
                     />
@@ -396,6 +402,7 @@ export const LobbyScreen: React.FC = () => {
       <ChatDrawer />
       <HostPanelModal />
       <StandingsModal />
+      <SettingsModal />
     </div>
   );
 };

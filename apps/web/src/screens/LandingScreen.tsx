@@ -184,14 +184,14 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
           <div className="pt-1">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                Chips To Enter With
+                Chips To Enter With (Max ₹20k)
               </span>
               <span className="text-xs font-mono font-bold text-gold-400">
                 ₹{buyIn.toLocaleString()}
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1.5 mb-2">
-              {[500, 1000, 2500, 5000].map((preset) => (
+              {[1000, 5000, 10000, 20000].map((preset) => (
                 <button
                   type="button"
                   key={preset}
@@ -209,12 +209,14 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
             <input
               type="number"
               min={100}
-              max={100000}
+              max={20000}
               step={100}
               value={buyIn}
-              onChange={(e) => setBuyIn(Math.max(100, Number.parseInt(e.target.value, 10) || 100))}
+              onChange={(e) =>
+                setBuyIn(Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)))
+              }
               className="w-full bg-black/50 border border-emerald-700/60 focus:border-gold-400 rounded-xl px-3.5 py-2 text-sm font-mono font-semibold text-white placeholder-emerald-600 focus:outline-none transition-colors"
-              placeholder="Custom chip amount"
+              placeholder="Custom chip amount (max 20,000)"
             />
           </div>
         </div>
@@ -333,13 +335,18 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
 
                   <div>
                     <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
-                      Max Bet (₹)
+                      Max Bet (Max ₹5,000)
                     </label>
                     <input
                       type="number"
                       value={maxBet}
                       min={minBet}
-                      onChange={(e) => setMaxBet(Number.parseInt(e.target.value, 10) || 1000)}
+                      max={5000}
+                      onChange={(e) =>
+                        setMaxBet(
+                          Math.min(5000, Math.max(minBet, Number.parseInt(e.target.value, 10) || 1000)),
+                        )
+                      }
                       className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
                     />
                   </div>

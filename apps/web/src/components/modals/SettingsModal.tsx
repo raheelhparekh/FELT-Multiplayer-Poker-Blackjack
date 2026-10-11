@@ -1,7 +1,7 @@
 import type React from "react";
 import { soundEngine } from "../../audio/sound-engine";
 import { useGameStore } from "../../store/game-store";
-import { useSettingsStore } from "../../store/settings-store";
+import { CASINO_THEMES, useSettingsStore } from "../../store/settings-store";
 
 export const SettingsModal: React.FC = () => {
   const activeModal = useGameStore((s) => s.activeModal);
@@ -16,6 +16,11 @@ export const SettingsModal: React.FC = () => {
   const sound = useSettingsStore((s) => s.sound);
   const updateSound = useSettingsStore((s) => s.updateSound);
 
+  const currentView = useGameStore((s) => s.currentView);
+  const myPlayerId = useGameStore((s) => s.myPlayerId);
+  const updateConfig = useGameStore((s) => s.updateConfig);
+  const isHost = currentView ? currentView.hostId === myPlayerId : true;
+
   if (activeModal !== "settings") {
     return null;
   }
@@ -28,7 +33,7 @@ export const SettingsModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-md bg-[#0c1810] border border-gold-400/40 rounded-3xl flex flex-col shadow-2xl overflow-hidden">
+      <div className="w-full max-w-md bg-[#0c1810] border border-gold-400/40 rounded-3xl flex flex-col shadow-2xl overflow-hidden max-h-[90dvh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-emerald-900/50 bg-black/40">
           <div className="flex items-center gap-2">
@@ -48,41 +53,60 @@ export const SettingsModal: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs text-emerald-200">
           {/* Theme Selection */}
           <div className="space-y-2">
-            <span className="font-bold uppercase tracking-wider text-emerald-300 text-[11px] block">
-              Felt Table Theme
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setTheme("classic-green")}
-                className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all ${
-                  theme === "classic-green"
-                    ? "bg-emerald-900/60 border-gold-400 shadow-md ring-1 ring-gold-400"
-                    : "bg-black/30 border-emerald-900/60 hover:bg-black/50"
-                }`}
-              >
-                <div className="w-5 h-5 rounded-full bg-[#195a32] border border-gold-400 shrink-0" />
-                <div>
-                  <div className="font-bold text-white text-xs">Classic Green</div>
-                  <div className="text-[10px] text-emerald-400/70">Casino Emerald</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTheme("dark-luxury")}
-                className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all ${
-                  theme === "dark-luxury"
-                    ? "bg-emerald-900/60 border-gold-400 shadow-md ring-1 ring-gold-400"
-                    : "bg-black/30 border-emerald-900/60 hover:bg-black/50"
-                }`}
-              >
-                <div className="w-5 h-5 rounded-full bg-[#271217] border border-gold-400 shrink-0" />
-                <div>
-                  <div className="font-bold text-white text-xs">Dark Luxury</div>
-                  <div className="text-[10px] text-zinc-400">Obsidian & Burgundy</div>
-                </div>
-              </button>
+            <div className="flex items-center justify-between">
+              <span className="font-bold uppercase tracking-wider text-emerald-300 text-[11px] block">
+                Casino Table Felt Color {currentView && (isHost ? "(Sets for room)" : "(Host controlled)")}
+              </span>
+              <span className="text-[10px] text-gold-300 font-mono">
+                {CASINO_THEMES.find((t) => t.id === theme)?.feltLabel ?? "Casino Felt"}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {CASINO_THEMES.map((item) => {
+                const isSelected = theme === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      if (currentView && !isHost) {
+                        useGameStore.setState({
+                          errorMessage: "Only the table host can change the felt color for the room.",
+                        });
+                        return;
+                      }
+                      setTheme(item.id);
+                      if (currentView && isHost) {
+                        updateConfig({ tableTheme: item.id });
+                      }
+                    }}
+                    className={`p-2.5 rounded-2xl border text-left flex items-center gap-3 transition-all ${
+                      isSelected
+                        ? "bg-emerald-950/80 border-gold-400 shadow-lg ring-1 ring-gold-400"
+                        : "bg-black/40 border-emerald-900/40 hover:bg-black/60 hover:border-emerald-700/60"
+                    }`}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-full border-2 border-white/80 shadow-inner shrink-0"
+                      style={{
+                        background: `radial-gradient(circle at 35% 35%, ${item.fromColor}, ${item.viaColor})`,
+                        borderColor: isSelected ? "#f0d060" : "rgba(255,255,255,0.4)",
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white text-xs truncate">{item.name}</span>
+                        {isSelected && (
+                          <span className="text-[10px] text-gold-300 font-black">✓</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-emerald-400/80 truncate">
+                        {item.feltLabel}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

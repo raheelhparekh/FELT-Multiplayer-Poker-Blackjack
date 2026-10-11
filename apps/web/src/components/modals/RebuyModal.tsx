@@ -43,11 +43,16 @@ export const RebuyModal: React.FC = () => {
         </div>
 
         <div className="space-y-2 text-left">
-          <label className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider block">
-            Select Amount
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider block">
+              Select Amount
+            </label>
+            <span className="text-[10px] text-amber-300 font-semibold font-mono">
+              Max ₹20,000 / request
+            </span>
+          </div>
           <div className="grid grid-cols-4 gap-1.5">
-            {[500, 1000, 2500, 5000].map((preset) => (
+            {[1000, 5000, 10000, 20000].map((preset) => (
               <button
                 type="button"
                 key={preset}
@@ -65,17 +70,21 @@ export const RebuyModal: React.FC = () => {
           <input
             type="number"
             min={100}
-            max={100000}
+            max={20000}
             step={100}
             value={amount}
-            onChange={(e) => setAmount(Math.max(100, Number.parseInt(e.target.value, 10) || 100))}
+            onChange={(e) =>
+              setAmount(
+                Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)),
+              )
+            }
             className="w-full bg-black/50 border border-emerald-700/60 focus:border-gold-400 rounded-xl px-3.5 py-2 text-sm font-mono font-semibold text-white placeholder-emerald-600 focus:outline-none transition-colors"
-            placeholder="Custom amount"
+            placeholder="Custom amount (max ₹20,000)"
           />
         </div>
 
         <div className="bg-emerald-950/60 border border-emerald-900/60 rounded-xl p-3 text-xs text-emerald-300">
-          Dealer and table host will receive a popup notification to approve your chip request.
+          Dealer and table host will receive an approval alert. Limits are capped at ₹20,000 per request.
         </div>
 
         <div className="flex gap-2 pt-2">
@@ -88,9 +97,9 @@ export const RebuyModal: React.FC = () => {
           </button>
           <button
             type="button"
-            disabled={requested}
+            disabled={requested || amount <= 0 || amount > 20000}
             onClick={handleRequest}
-            className="flex-1 py-2.5 rounded-xl bg-gold-400 hover:bg-gold-300 disabled:bg-emerald-600 text-black font-bold text-xs shadow-lg transition-transform active:scale-95"
+            className="flex-1 py-2.5 rounded-xl bg-gold-400 hover:bg-gold-300 disabled:opacity-40 text-black font-bold text-xs shadow-lg transition-transform active:scale-95"
           >
             {requested ? "Requested! ✓" : `Request ₹${amount.toLocaleString()}`}
           </button>

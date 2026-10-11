@@ -80,6 +80,10 @@ export interface ClientGameView {
    */
   waitingForReconnect: string | null;
   /**
+   * Remaining ms on current timer if paused (for client to freeze timer display).
+   */
+  pausedRemainingMs?: number | null | undefined;
+  /**
    * playerIds who have queued chip adjustments/rebuys pending for next round.
    * The client uses this to show a "will apply next round" indicator.
    */
@@ -126,6 +130,15 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
     dealerHoleCardRevealed: Boolean(state.dealerHoleCardRevealed),
     tableStatusMessage: state.tableStatusMessage ?? null,
     waitingForReconnect: state.waitingForReconnect ?? null,
+    pausedRemainingMs: state.pausedRemainingMs
+      ? state.phase === "betting"
+        ? state.pausedRemainingMs.bet
+        : state.phase === "insurance"
+          ? state.pausedRemainingMs.insurance
+          : state.phase === "player_turns"
+            ? state.pausedRemainingMs.action
+            : null
+      : null,
     // NOTE: dealerHasBlackjack is deliberately NOT included.
     // NOTE: shoe and pending card identities are deliberately NOT included.
   };

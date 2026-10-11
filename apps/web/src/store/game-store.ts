@@ -8,6 +8,7 @@ import type {
 } from "@felt/shared";
 import { type Socket, io } from "socket.io-client";
 import { create } from "zustand";
+import { soundEngine } from "../audio/sound-engine";
 
 export type ModalType = "chat" | "activity" | "host" | "standings" | "rebuy" | "settings" | null;
 
@@ -180,6 +181,10 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     );
 
     socket.on("chat", (payload: { message: ChatMessage }) => {
+      const isFromMe = payload.message.senderId === get().myPlayerId;
+      if (!isFromMe) {
+        soundEngine.play("chat_pop");
+      }
       set((state) => {
         const next = [...state.chatLog, payload.message].slice(-200);
         const unread = state.activeModal !== "chat" ? state.unreadChatCount + 1 : 0;
@@ -557,6 +562,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
 
     // Chat
     sendChat: (text: string) => {
+      soundEngine.play("chat_pop");
       const socket = ensureSocket();
       socket.emit("chat:send", { text });
     },
