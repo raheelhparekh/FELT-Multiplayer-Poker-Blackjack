@@ -4,8 +4,6 @@ Play blackjack with friends at a private, real-time table. Create a room, share 
 
 [**▶ Play Felt**](https://blackjack-5d7w.onrender.com) · [**View the source code**](https://github.com/raheelhparekh/blackjack)
 
-[![CI](https://github.com/raheelhparekh/blackjack/actions/workflows/ci.yml/badge.svg)](https://github.com/raheelhparekh/blackjack/actions/workflows/ci.yml)
-
 ## What you can do
 
 - **Create or join a private table** — invite friends with a room code.
@@ -35,11 +33,11 @@ flowchart LR
 
 ## Codebase at a glance
 
-| Folder | What it contains |
-| --- | --- |
-| [`apps/web`](apps/web) | React interface: landing page, lobby, game table, and dialogs |
-| [`apps/server`](apps/server) | Fastify API, Socket.IO multiplayer server, authentication, and persistence |
-| [`packages/shared`](packages/shared) | Blackjack rules engine, shared types, and client/server message schemas |
+| Folder                               | What it contains                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| [`apps/web`](apps/web)               | React interface: landing page, lobby, game table, and dialogs              |
+| [`apps/server`](apps/server)         | Fastify API, Socket.IO multiplayer server, authentication, and persistence |
+| [`packages/shared`](packages/shared) | Blackjack rules engine, shared types, and client/server message schemas    |
 
 The shared rules package keeps game decisions on the server side rather than trusting browser-submitted game state. The server also creates player-specific views of the table, including protection for hidden dealer cards.
 
@@ -49,7 +47,7 @@ The shared rules package keeps game decisions on the server side rather than tru
 - **Backend:** Node.js, Fastify, Socket.IO
 - **Rules and validation:** shared TypeScript game engine, Zod
 - **Data:** PostgreSQL, Drizzle ORM
-- **Quality:** Vitest, Biome, GitHub Actions
+- **Checks:** Vitest, ESLint, Prettier
 - **Hosting:** Render
 
 ## Run locally
@@ -69,11 +67,10 @@ The web app runs on port `5173` and the server on port `3001`. Set `DATABASE_URL
 ```bash
 pnpm test       # Run shared-engine and server tests
 pnpm typecheck  # Type-check workspace packages
-pnpm lint       # Check formatting and lint rules with Biome
+pnpm lint       # Lint JavaScript and TypeScript with ESLint
+pnpm format:check # Check formatting with Prettier
 pnpm build      # Build shared package, server, and web app
 ```
-
-GitHub Actions runs lint, type-checking, and tests for pushes to `main` and `dev`, and pull requests targeting `main`.
 
 ## Deployment
 

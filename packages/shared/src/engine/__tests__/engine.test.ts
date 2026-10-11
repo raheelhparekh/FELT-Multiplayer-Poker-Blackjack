@@ -507,20 +507,19 @@ describe("play:split", () => {
   });
 
   it("enforces maxSplitHands limit", () => {
-    const s = stateInPlayerTurns([c("8"), c("8")], [c("10"), c("6")], [c("3"), c("4")], {
-      maxSplitHands: 2,
-    });
-    // First split OK
-    let { state } = reduce(s, { type: "play:split", playerId: "p1", handId: "h1" });
-    // The first hand now has splitDepth=1 and 2 cards — try to split again (should fail)
-    const hand = state.hands.find((h) => h.cards.length === 2 && !h.isSplitAce)!;
-    if (hand) {
-      // Check that further splits are not legal
-      const cfg2 = { ...state.config, maxSplitHands: 2 };
-      state = { ...state, config: cfg2 };
-      // The hand's splitDepth should prevent further splits
-      // (hand.splitDepth >= maxSplitHands - 1 === 1 → rejected)
-    }
+    const s = stateInPlayerTurns(
+      [c("8"), c("8")],
+      [c("10"), c("6")],
+      [c("8"), c("3"), c("8"), c("4")],
+      {
+        maxSplitHands: 2,
+      },
+    );
+    const { state } = reduce(s, { type: "play:split", playerId: "p1", handId: "h1" });
+    expect(state.hands[0]?.splitDepth).toBe(1);
+    expect(() => reduce(state, { type: "play:split", playerId: "p1", handId: "h1" })).toThrowError(
+      EngineError,
+    );
   });
 
   it("split by rank rejects T+J even though same value", () => {
@@ -546,7 +545,6 @@ describe("dealer peek and insurance", () => {
   it("dealer BJ immediately goes to round_summary", () => {
     // We'll verify via state inspection after a full deal
     // Build a state where dealer hand has BJ
-    const _cfg = defaultRoomConfig();
     const state = stateInPlayerTurns([c("10"), c("6")], [c("A"), c("K")]);
     // Manually trigger settlement for dealer BJ
     const dealerHand = state.dealerHand!;

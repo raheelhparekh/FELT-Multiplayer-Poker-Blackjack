@@ -114,7 +114,10 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-[#07130a] text-emerald-100 flex flex-col items-center p-3 sm:p-6 pb-8 relative overflow-y-auto overflow-x-hidden" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div
+      className="min-h-[100dvh] w-full bg-[#07130a] text-emerald-100 flex flex-col items-center p-3 sm:p-6 pb-8 relative overflow-y-auto overflow-x-hidden"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
       {/* Background felt texture & subtle gradient rings */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#11381d] via-[#091f11] to-[#040c06] -z-10" />
 
@@ -325,8 +328,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                 <span className="flex items-center gap-1.5">
                   <span>⚙</span>
                   <span>
-                    Customize Rules ({decks} Decks • {dealerHitsSoft17 ? "H17" : "S17"} • ₹
-                    {minBet}-₹{maxBet})
+                    Customize Rules ({decks} Decks • {dealerHitsSoft17 ? "H17" : "S17"} • ₹{minBet}
+                    -₹{maxBet})
                   </span>
                 </span>
                 <span>{showTableRules ? "▲" : "▼"}</span>
@@ -425,7 +428,10 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                         max={5000}
                         onChange={(e) =>
                           setMaxBet(
-                            Math.min(5000, Math.max(minBet, Number.parseInt(e.target.value, 10) || 1000)),
+                            Math.min(
+                              5000,
+                              Math.max(minBet, Number.parseInt(e.target.value, 10) || 1000),
+                            ),
                           )
                         }
                         className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"

@@ -57,7 +57,10 @@ export const LobbyScreen: React.FC = () => {
   const seatedCount = participants.filter((p) => p.seat !== null).length;
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-[var(--felt-bg)] text-[var(--felt-text)] overflow-x-hidden overflow-y-auto transition-colors duration-500" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div
+      className="min-h-[100dvh] flex flex-col bg-[var(--felt-bg)] text-[var(--felt-text)] overflow-x-hidden overflow-y-auto transition-colors duration-500"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
       <HeaderBar />
 
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 pb-10 space-y-6">

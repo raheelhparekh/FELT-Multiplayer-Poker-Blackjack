@@ -132,13 +132,7 @@ export interface PlayerTransaction {
   playerId: PlayerId;
   displayName: string;
   type:
-    | "buy_in"
-    | "rebuy"
-    | "chip_request"
-    | "round_win"
-    | "round_loss"
-    | "round_push"
-    | "adjustment";
+    "buy_in" | "rebuy" | "chip_request" | "round_win" | "round_loss" | "round_push" | "adjustment";
   amount: number;
   balanceAfter: number;
   status?: "pending" | "approved" | "completed" | undefined;

@@ -12,7 +12,7 @@ function secureRandomInt(min: number, max: number): number {
     let rand: number;
     do {
       globalThis.crypto.getRandomValues(uint32);
-      // biome-ignore lint/style/noNonNullAssertion: fixed length array
+
       rand = uint32[0]!;
     } while (rand >= limit);
     return min + (rand % range);
@@ -83,9 +83,9 @@ function buildUnshuffledCards(decks: number): Card[] {
 export function fisherYatesShuffle<T>(arr: T[]): void {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = secureRandomInt(0, i + 1);
-    // biome-ignore lint/style/noNonNullAssertion: bounds guaranteed by loop
+
     const tmp = arr[i]!;
-    // biome-ignore lint/style/noNonNullAssertion: bounds guaranteed by loop
+
     arr[i] = arr[j]!;
     arr[j] = tmp;
   }

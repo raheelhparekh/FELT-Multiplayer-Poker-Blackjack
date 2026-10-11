@@ -229,8 +229,7 @@ export class Room {
 
     // Sync participant to engine state bankrolls (with custom buyIn if supplied; capped at 20,000 max)
     const MAX_STARTING_BUY_IN = 20000;
-    const rawBuyIn =
-      params.buyIn && params.buyIn > 0 ? params.buyIn : this.config.startingStack;
+    const rawBuyIn = params.buyIn && params.buyIn > 0 ? params.buyIn : this.config.startingStack;
     const initialStack = Math.min(MAX_STARTING_BUY_IN, Math.max(100, rawBuyIn));
     const stacks = new Map(this.state.stacks);
     const totalBuyIns = new Map(this.state.totalBuyIns);
@@ -810,7 +809,9 @@ export class Room {
         "midnight-onyx": "Venetian Noir",
         "imperial-purple": "Crown Velvet Amethyst",
       };
-      changes.push(`Table felt changed to ${themeNames[partialConfig.tableTheme] ?? partialConfig.tableTheme}`);
+      changes.push(
+        `Table felt changed to ${themeNames[partialConfig.tableTheme] ?? partialConfig.tableTheme}`,
+      );
     }
     if (partialConfig.decks !== undefined && partialConfig.decks !== this.config.decks) {
       changes.push(`Decks changed to ${partialConfig.decks}`);
@@ -821,19 +822,36 @@ export class Room {
     if (partialConfig.minBet !== undefined && partialConfig.minBet !== this.config.minBet) {
       changes.push(`Min Bet set to ₹${partialConfig.minBet.toLocaleString()}`);
     }
-    if (partialConfig.startingStack !== undefined && partialConfig.startingStack !== this.config.startingStack) {
+    if (
+      partialConfig.startingStack !== undefined &&
+      partialConfig.startingStack !== this.config.startingStack
+    ) {
       changes.push(`Starting Stack set to ₹${partialConfig.startingStack.toLocaleString()}`);
     }
-    if (partialConfig.rebuyAmount !== undefined && partialConfig.rebuyAmount !== this.config.rebuyAmount) {
+    if (
+      partialConfig.rebuyAmount !== undefined &&
+      partialConfig.rebuyAmount !== this.config.rebuyAmount
+    ) {
       changes.push(`Rebuy Amount set to ₹${partialConfig.rebuyAmount.toLocaleString()}`);
     }
-    if (partialConfig.dealerHitsSoft17 !== undefined && partialConfig.dealerHitsSoft17 !== this.config.dealerHitsSoft17) {
-      changes.push(`Dealer Rule set to ${partialConfig.dealerHitsSoft17 ? "Hits Soft 17 (H17)" : "Stands on 17 (S17)"}`);
+    if (
+      partialConfig.dealerHitsSoft17 !== undefined &&
+      partialConfig.dealerHitsSoft17 !== this.config.dealerHitsSoft17
+    ) {
+      changes.push(
+        `Dealer Rule set to ${partialConfig.dealerHitsSoft17 ? "Hits Soft 17 (H17)" : "Stands on 17 (S17)"}`,
+      );
     }
-    if (partialConfig.blackjackPayout !== undefined && partialConfig.blackjackPayout !== this.config.blackjackPayout) {
+    if (
+      partialConfig.blackjackPayout !== undefined &&
+      partialConfig.blackjackPayout !== this.config.blackjackPayout
+    ) {
       changes.push(`Blackjack Payout set to ${partialConfig.blackjackPayout}`);
     }
-    if (partialConfig.actionTimerSec !== undefined && partialConfig.actionTimerSec !== this.config.actionTimerSec) {
+    if (
+      partialConfig.actionTimerSec !== undefined &&
+      partialConfig.actionTimerSec !== this.config.actionTimerSec
+    ) {
       changes.push(`Action Timer set to ${partialConfig.actionTimerSec}s`);
     }
 
@@ -1585,8 +1603,7 @@ export class Room {
         }
         const p = this.participants.get(playerId);
         const name = p ? p.displayName : playerId;
-        const rawReq =
-          action.amount && action.amount > 0 ? action.amount : this.config.rebuyAmount;
+        const rawReq = action.amount && action.amount > 0 ? action.amount : this.config.rebuyAmount;
         const reqAmount = Math.min(MAX_CHIP_REQUEST, Math.max(100, rawReq));
         const currentStack = this.state.stacks.get(playerId) ?? 0;
         if (this.config.rebuyRequiresHostApproval) {
@@ -1726,7 +1743,11 @@ export class Room {
       nextState.activeHandId &&
       !this.state.isPaused
     ) {
-      if (prevActiveHandId !== nextState.activeHandId || action.type === "play:hit" || action.type === "play:split") {
+      if (
+        prevActiveHandId !== nextState.activeHandId ||
+        action.type === "play:hit" ||
+        action.type === "play:split"
+      ) {
         this.setupActionTimer();
       }
     }
@@ -2299,7 +2320,7 @@ export class Room {
     try {
       data = JSON.parse(jsonStr);
     } catch (err) {
-      throw new Error(`Snapshot parse error: ${err}`);
+      throw new Error(`Snapshot parse error: ${err}`, { cause: err });
     }
 
     // Version check — future migrations would go here

@@ -24,7 +24,6 @@ export const ChatDrawer: React.FC = () => {
     }
   }, [activeModal]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Scroll when chat or activity updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatLog, activityLog, activeTab]);

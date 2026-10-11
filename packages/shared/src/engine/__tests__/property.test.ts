@@ -165,7 +165,7 @@ describe("property: legal actions match what reducer accepts", () => {
             reduce(state, gAction); // should not throw ILLEGAL_ACTION
           } catch (e) {
             if (e instanceof EngineError && e.code === "ILLEGAL_ACTION") {
-              throw new Error(`Legal action '${action}' was rejected: ${e.message}`);
+              throw new Error(`Legal action '${action}' was rejected: ${e.message}`, { cause: e });
             }
             // Other errors (e.g., insufficient funds) are OK for this property
           }

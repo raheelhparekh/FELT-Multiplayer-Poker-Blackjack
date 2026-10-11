@@ -105,16 +105,14 @@ describe("simulation: house edge", () => {
 
       // Play hand
       let currentBet = BET;
-      let doubled = false;
       let done = false;
 
       while (!done) {
         const action = basicStrategy(playerCards, d1.rank);
         const hv = evaluateHand(playerCards);
 
-        if (action === "D" && !doubled) {
+        if (action === "D") {
           currentBet = BET * 2;
-          doubled = true;
           let card: Card;
           ({ card, shoe } = drawCard(shoe));
           playerCards.push(card);

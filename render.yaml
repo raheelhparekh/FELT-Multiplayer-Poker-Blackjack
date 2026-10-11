@@ -6,9 +6,9 @@ services:
     # Render builds from the Dockerfile at the repo root
     dockerfilePath: ./Dockerfile
     # Render exposes this port; the Dockerfile sets PORT=8080 internally
-    plan: free          # upgrade to "starter" or higher for always-on
+    plan: free # upgrade to "starter" or higher for always-on
     healthCheckPath: /healthz
-    autoDeploy: true    # redeploy automatically on every git push to main
+    autoDeploy: true # redeploy automatically on every git push to main
 
     envVars:
       - key: NODE_ENV
@@ -40,6 +40,6 @@ services:
   # ── Postgres Database ─────────────────────────────────────────────────────────
 databases:
   - name: felt-postgres
-    plan: free          # 90-day free tier on Render; upgrade for persistence
+    plan: free # 90-day free tier on Render; upgrade for persistence
     databaseName: felt
     user: felt

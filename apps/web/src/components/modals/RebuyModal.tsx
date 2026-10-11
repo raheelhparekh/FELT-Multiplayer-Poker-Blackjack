@@ -74,9 +74,7 @@ export const RebuyModal: React.FC = () => {
             step={100}
             value={amount}
             onChange={(e) =>
-              setAmount(
-                Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)),
-              )
+              setAmount(Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)))
             }
             className="w-full bg-black/50 border border-emerald-700/60 focus:border-gold-400 rounded-xl px-3.5 py-2 text-sm font-mono font-semibold text-white placeholder-emerald-600 focus:outline-none transition-colors"
             placeholder="Custom amount (max ₹20,000)"
@@ -84,7 +82,8 @@ export const RebuyModal: React.FC = () => {
         </div>
 
         <div className="bg-emerald-950/60 border border-emerald-900/60 rounded-xl p-3 text-xs text-emerald-300">
-          Dealer and table host will receive an approval alert. Limits are capped at ₹20,000 per request.
+          Dealer and table host will receive an approval alert. Limits are capped at ₹20,000 per
+          request.
         </div>
 
         <div className="flex gap-2 pt-2">

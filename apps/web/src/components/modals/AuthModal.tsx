@@ -28,12 +28,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     clearError();
 
-    let success = false;
-    if (tab === "login") {
-      success = await login(email, password);
-    } else {
-      success = await register(email, username, password, avatarId);
-    }
+    const success =
+      tab === "login"
+        ? await login(email, password)
+        : await register(email, username, password, avatarId);
 
     if (success) {
       // Claim user in current room if connected

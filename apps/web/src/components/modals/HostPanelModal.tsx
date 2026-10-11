@@ -477,7 +477,9 @@ export const HostPanelModal: React.FC = () => {
               </div>
 
               <div>
-                <span className="text-[10px] text-emerald-400 block mb-1">Max Bet (Max ₹5,000)</span>
+                <span className="text-[10px] text-emerald-400 block mb-1">
+                  Max Bet (Max ₹5,000)
+                </span>
                 <input
                   type="number"
                   min={1}

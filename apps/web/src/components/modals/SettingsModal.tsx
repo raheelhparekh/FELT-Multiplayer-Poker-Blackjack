@@ -55,7 +55,8 @@ export const SettingsModal: React.FC = () => {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-bold uppercase tracking-wider text-emerald-300 text-[11px] block">
-                Casino Table Felt Color {currentView && (isHost ? "(Sets for room)" : "(Host controlled)")}
+                Casino Table Felt Color{" "}
+                {currentView && (isHost ? "(Sets for room)" : "(Host controlled)")}
               </span>
               <span className="text-[10px] text-gold-300 font-mono">
                 {CASINO_THEMES.find((t) => t.id === theme)?.feltLabel ?? "Casino Felt"}
@@ -71,7 +72,8 @@ export const SettingsModal: React.FC = () => {
                     onClick={() => {
                       if (currentView && !isHost) {
                         useGameStore.setState({
-                          errorMessage: "Only the table host can change the felt color for the room.",
+                          errorMessage:
+                            "Only the table host can change the felt color for the room.",
                         });
                         return;
                       }

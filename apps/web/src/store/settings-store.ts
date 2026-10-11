@@ -111,11 +111,10 @@ export const useSettingsStore = create<UserSettingsState>((set, get) => {
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-  const rawTheme = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEYS.THEME) : null;
+  const rawTheme =
+    typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEYS.THEME) : null;
   const savedTheme: TableTheme =
-    rawTheme === "dark-luxury"
-      ? "midnight-onyx"
-      : (rawTheme as TableTheme) || "classic-green";
+    rawTheme === "dark-luxury" ? "midnight-onyx" : (rawTheme as TableTheme) || "classic-green";
 
   const savedFourColor = localStorage.getItem(STORAGE_KEYS.FOUR_COLOR) === "true";
   const savedSpeedStr = localStorage.getItem(STORAGE_KEYS.ANIM_SPEED);
@@ -133,7 +132,8 @@ export const useSettingsStore = create<UserSettingsState>((set, get) => {
     sound: soundEngine.getSettings(),
 
     setTheme: (theme: ThemeName) => {
-      const normalizedTheme: TableTheme = (theme as string) === "dark-luxury" ? "midnight-onyx" : theme;
+      const normalizedTheme: TableTheme =
+        (theme as string) === "dark-luxury" ? "midnight-onyx" : theme;
       localStorage.setItem(STORAGE_KEYS.THEME, normalizedTheme);
       if (typeof document !== "undefined") {
         document.documentElement.setAttribute("data-theme", normalizedTheme);

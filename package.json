@@ -12,14 +12,20 @@
     "test": "pnpm --filter @felt/shared test && pnpm --filter @felt/server test",
     "test:ci": "pnpm --filter @felt/shared test --reporter=verbose && pnpm --filter @felt/server test --reporter=verbose",
     "load-test": "pnpm --filter @felt/tools load-test",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "pnpm --recursive typecheck",
     "clean": "pnpm --recursive exec rm -rf dist node_modules .turbo"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "typescript": "^5.7.2"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.71.1"
   }
 }
