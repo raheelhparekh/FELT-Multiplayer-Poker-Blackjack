@@ -11,13 +11,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
-COPY tools/package.json ./tools/
 
 RUN pnpm install --frozen-lockfile
 
 COPY packages ./packages
 COPY apps ./apps
-COPY tools ./tools
 
 RUN find . -name "*.tsbuildinfo" -delete && pnpm build
 
