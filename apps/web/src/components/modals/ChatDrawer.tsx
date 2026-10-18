@@ -40,9 +40,15 @@ export const ChatDrawer: React.FC = () => {
     setInputText("");
   };
 
-  const formatTime = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const formatTime = (ts?: number | null) => {
+    if (!ts) return "";
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
   };
 
   return (
@@ -131,15 +137,15 @@ export const ChatDrawer: React.FC = () => {
               No activity recorded yet this round.
             </div>
           ) : (
-            activityLog.map((act) => (
+            activityLog.filter(Boolean).map((act, idx) => (
               <div
-                key={`act-${act.seq}-${act.ts}`}
+                key={`act-${act.seq ?? idx}-${act.ts ?? idx}`}
                 className="flex items-start gap-2 text-xs text-emerald-300/80 py-1 border-b border-emerald-900/20 font-mono"
               >
                 <span className="text-[10px] text-emerald-600 mt-0.5 shrink-0">
                   {formatTime(act.ts)}
                 </span>
-                <span className="flex-1 break-words">{act.text}</span>
+                <span className="flex-1 break-words">{act.text ?? ""}</span>
               </div>
             ))
           )}

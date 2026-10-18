@@ -1,4 +1,4 @@
-import type { ClientHand, Participant } from "@felt/shared";
+import type { ClientHand, Participant, PlayerTransaction } from "@felt/shared";
 import type React from "react";
 import { useState } from "react";
 import { useGameStore } from "../../store/game-store";
@@ -10,6 +10,7 @@ export const StandingsModal: React.FC = () => {
   const currentView = useGameStore((s) => s.currentView);
   const myPlayerId = useGameStore((s) => s.myPlayerId);
   const dealerNextRound = useGameStore((s) => s.dealerNextRound);
+  const pokerNextHand = useGameStore((s) => s.pokerNextHand);
 
   const [activeTab, setActiveTab] = useState<"standings" | "transactions">("standings");
   const [filterPlayerId, setFilterPlayerId] = useState<string>("all");
@@ -18,44 +19,54 @@ export const StandingsModal: React.FC = () => {
     return null;
   }
 
+  const isPoker = currentView.gameType === "poker";
   const {
-    participants,
-    stacks,
+    participants = [],
+    stacks = {},
     totalBuyIns = {},
     config,
-    dealerBank,
+    dealerBank = 0,
     dealerTotalBuyIn,
-    roundNumber,
+    roundNumber = 1,
     phase,
     dealerId,
     hostId,
-    hands,
+    hands = [],
     isSessionStarted,
-  } = currentView;
+  } = currentView as any;
 
   const isDealerOrHost = myPlayerId === dealerId || myPlayerId === hostId;
-  const isRoundSummary = phase === "round_summary";
+  const isRoundSummary = phase === "round_summary" || phase === "hand_summary";
   const isSessionOver = !isSessionStarted || phase === "lobby";
+  const pokerHandNumber = (currentView as any).handNumber ?? roundNumber;
 
-  const initialBuyIns = currentView.initialBuyIns ?? {};
-  const rebuys = currentView.rebuys ?? {};
+  const initialBuyIns = (currentView as any).initialBuyIns ?? {};
+  const rebuys = (currentView as any).rebuys ?? {};
 
   // Calculate each participant's accurate stack, buy-in and net PNL
   const participantData = participants.map((p: Participant) => {
-    const isDealer = p.id === dealerId;
-    const stack = isDealer ? dealerBank : (stacks[p.id] ?? 0);
+    const isDealer = !isPoker && p.id === dealerId;
+    const pokerPlayer = isPoker
+      ? (currentView as any).players?.find((pl: any) => pl.id === p.id)
+      : null;
+    const stack = isDealer
+      ? (dealerBank ?? 0)
+      : (pokerPlayer?.stack ?? stacks[p.id] ?? 0);
+    const defaultInitial = isPoker
+      ? (config?.minBuyIn ?? 1000)
+      : (config?.startingStack ?? 1000);
     const initial = isDealer
-      ? (dealerTotalBuyIn ?? config.dealerStartingBank)
+      ? (dealerTotalBuyIn ?? config?.dealerStartingBank ?? 0)
       : (initialBuyIns[p.id] ??
         (totalBuyIns[p.id] !== undefined
-          ? Math.min(totalBuyIns[p.id]!, config.startingStack)
-          : config.startingStack));
+          ? Math.min(totalBuyIns[p.id]!, defaultInitial)
+          : defaultInitial));
     const extraChips = isDealer
       ? 0
       : (rebuys[p.id] ?? Math.max(0, (totalBuyIns[p.id] ?? 0) - initial));
     const buyIn = isDealer
-      ? (dealerTotalBuyIn ?? config.dealerStartingBank)
-      : (totalBuyIns[p.id] ?? config.startingStack);
+      ? (dealerTotalBuyIn ?? config?.dealerStartingBank ?? 0)
+      : (totalBuyIns[p.id] ?? initialBuyIns[p.id] ?? defaultInitial);
     const net = stack - buyIn;
     return { participant: p, isDealer, stack, initialBuyIn: initial, extraChips, buyIn, net };
   });
@@ -65,7 +76,7 @@ export const StandingsModal: React.FC = () => {
 
   const totalTableNet = sortedData.reduce((sum, item) => sum + item.net, 0);
 
-  const transactions = currentView.transactions ?? [];
+  const transactions = (currentView as any).transactions ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -80,8 +91,11 @@ export const StandingsModal: React.FC = () => {
                   {isSessionOver ? "Session Summary & Financials" : "Table Standings & Ledger"}
                 </h2>
                 <p className="text-[11px] text-emerald-400/70 font-mono">
-                  {isSessionOver ? "Session Completed" : `Round ${roundNumber}`} • House Bank:{" "}
-                  <span className="text-white font-bold">₹{dealerBank.toLocaleString()}</span>
+                  {isSessionOver
+                    ? "Session Completed"
+                    : isPoker
+                      ? `Hand #${pokerHandNumber} • Blinds ₹${config?.smallBlind ?? 10}/₹${config?.bigBlind ?? 20}`
+                      : `Round ${roundNumber} • House Bank: ₹${(dealerBank ?? 0).toLocaleString()}`}
                 </p>
               </div>
             </div>
@@ -178,8 +192,8 @@ export const StandingsModal: React.FC = () => {
                 </div>
               )}
 
-              {/* Recent Round Hand Results if round_summary */}
-              {isRoundSummary && hands.length > 0 && (
+              {/* Recent Round Hand Results if round_summary (Blackjack) */}
+              {!isPoker && isRoundSummary && Array.isArray(hands) && hands.length > 0 && (
                 <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-2xl p-3 space-y-2">
                   <h3 className="font-bold text-white text-[11px] uppercase tracking-wider text-emerald-300">
                     Round {roundNumber} Outcomes
@@ -224,6 +238,39 @@ export const StandingsModal: React.FC = () => {
                               {hand.result}
                             </span>
                           </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Hand Winners if Poker */}
+              {isPoker && Array.isArray((currentView as any).winners) && (currentView as any).winners.length > 0 && (
+                <div className="bg-emerald-950/40 border border-gold-500/40 rounded-2xl p-3 space-y-2">
+                  <h3 className="font-bold text-gold-300 text-[11px] uppercase tracking-wider">
+                    Hand #{pokerHandNumber} Winners
+                  </h3>
+                  <div className="space-y-1.5">
+                    {((currentView as any).winners as any[]).map((w, idx) => {
+                      const p = participants.find((part: Participant) => part.id === w.playerId);
+                      return (
+                        <div
+                          key={`winner-${w.playerId}-${idx}`}
+                          className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-black/30 text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🏆</span>
+                            <span className="font-bold text-white">
+                              {p ? p.displayName : w.playerId}
+                            </span>
+                            <span className="text-[10px] text-gold-400 font-mono">
+                              ({w.handName})
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold text-emerald-400 text-xs">
+                            +₹{w.amount?.toLocaleString()}
+                          </span>
                         </div>
                       );
                     })}
@@ -369,7 +416,7 @@ export const StandingsModal: React.FC = () => {
                 >
                   <option value="all">All Players ({transactions.length})</option>
                   {myPlayerId && <option value={myPlayerId}>My Transactions Only</option>}
-                  {participants.map((p) => (
+                  {participants.map((p: Participant) => (
                     <option key={p.id} value={p.id}>
                       {p.displayName} {p.id === myPlayerId ? "(You)" : ""}
                     </option>
@@ -378,7 +425,7 @@ export const StandingsModal: React.FC = () => {
               </div>
 
               {transactions.filter(
-                (tx) => filterPlayerId === "all" || tx.playerId === filterPlayerId,
+                (tx: PlayerTransaction) => filterPlayerId === "all" || tx.playerId === filterPlayerId,
               ).length === 0 ? (
                 <div className="p-8 text-center bg-black/30 border border-emerald-900/40 rounded-2xl text-emerald-500/70 font-mono text-xs">
                   No transactions recorded yet.
@@ -394,10 +441,10 @@ export const StandingsModal: React.FC = () => {
 
                   <div className="divide-y divide-emerald-900/30 max-h-[50vh] overflow-y-auto">
                     {transactions
-                      .filter((tx) => filterPlayerId === "all" || tx.playerId === filterPlayerId)
+                      .filter((tx: PlayerTransaction) => filterPlayerId === "all" || tx.playerId === filterPlayerId)
                       .slice()
                       .reverse()
-                      .map((tx) => {
+                      .map((tx: PlayerTransaction) => {
                         const isAdjustment = tx.type === "adjustment";
                         const isNegative =
                           tx.type === "round_loss" ||
@@ -526,16 +573,20 @@ export const StandingsModal: React.FC = () => {
             Close
           </button>
 
-          {isRoundSummary && isDealerOrHost && (
+          {isRoundSummary && (isPoker ? hostId === myPlayerId : isDealerOrHost) && (
             <button
               type="button"
               onClick={() => {
-                dealerNextRound();
+                if (isPoker) {
+                  pokerNextHand();
+                } else {
+                  dealerNextRound();
+                }
                 closeModal();
               }}
               className="px-5 py-2 rounded-xl bg-gold-400 hover:bg-gold-300 text-black font-bold text-xs tracking-wider shadow-lg transition-transform active:scale-95"
             >
-              Start Next Round →
+              {isPoker ? "Start Next Hand →" : "Start Next Round →"}
             </button>
           )}
         </div>

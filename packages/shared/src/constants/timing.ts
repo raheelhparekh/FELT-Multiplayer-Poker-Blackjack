@@ -17,6 +17,25 @@ export const TIMING = {
   INSURANCE_TIMER_MS: 15_000,
 } as const;
 
+export const POKER_TIMING = {
+  /** Gap between each hole card dealt. */
+  DEAL_HOLE_CARD_MS: 300,
+  /** Community board card deal animation. */
+  DEAL_BOARD_CARD_MS: 450,
+  /** Burn card slide animation. */
+  BURN_CARD_MS: 250,
+  /** Street pause between betting round and dealing next street. */
+  STREET_PAUSE_MS: 600,
+  /** Dramatic pause before turn/river when players are all-in. */
+  ALL_IN_RUNOUT_PAUSE_MS: 1500,
+  /** Showdown hole cards reveal time. */
+  SHOWDOWN_REVEAL_MS: 900,
+  /** Pot award animation per pot (main pot, side pots). */
+  POT_AWARD_PER_POT_MS: 800,
+  /** Delay before next hand starts in auto mode. */
+  AUTO_NEXT_HAND_DELAY_SEC: 6,
+} as const;
+
 // ─── Room defaults ────────────────────────────────────────────────────────────
 
 export const ROOM = {

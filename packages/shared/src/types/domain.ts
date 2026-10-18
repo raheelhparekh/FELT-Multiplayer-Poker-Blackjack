@@ -21,7 +21,8 @@ export type ClientCard = { hidden: false; card: Card } | { hidden: true };
 
 export type HandId = string;
 export type PlayerId = string;
-export type SeatNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type SeatNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export type GameType = "blackjack" | "poker";
 
 export type HandResult =
   | "blackjack" // paid 3:2 or 6:5

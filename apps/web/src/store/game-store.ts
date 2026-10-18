@@ -2,6 +2,7 @@ import type {
   ActivityEntry,
   ChatMessage,
   ClientGameView,
+  ClientPokerGameView,
   RoomConfig,
   ServerError,
   TableNotification,
@@ -38,7 +39,7 @@ export interface GameStoreState {
   dismissNotification: () => void;
   setSelectedChip: (amount: number) => void;
 
-  createRoom: (password?: string, config?: Partial<RoomConfig>, buyIn?: number) => Promise<string>;
+  createRoom: (password?: string, config?: any, buyIn?: number, gameType?: import("@felt/shared").GameType) => Promise<string>;
   joinRoom: (code: string, password?: string, buyIn?: number) => Promise<void>;
   leaveRoom: () => void;
 
@@ -51,7 +52,7 @@ export interface GameStoreState {
   kick: (targetId: string) => void;
   transferHost: (targetId: string) => void;
   adjustChips: (target: string, op: "set" | "add" | "subtract", amount: number) => void;
-  updateConfig: (config: Partial<RoomConfig>) => void;
+  updateConfig: (config: any) => void;
   pause: () => void;
   resume: () => void;
   endSession: () => void;
@@ -81,6 +82,20 @@ export interface GameStoreState {
   playDouble: (handId: string) => void;
   playSplit: (handId: string) => void;
   playInsurance: (handId: string, accept: boolean) => void;
+
+  // Poker actions
+  pokerFold: () => void;
+  pokerCheck: () => void;
+  pokerCall: () => void;
+  pokerBet: (amount: number) => void;
+  pokerRaise: (to: number) => void;
+  pokerAllIn: () => void;
+  pokerShowCards: () => void;
+  pokerSeeCards: () => void;
+  pokerDealNextStreet: () => void;
+  pokerNextHand: () => void;
+  pokerSitOut: () => void;
+  pokerSitIn: () => void;
 
   // Rebuy
   rebuyRequest: (amount?: number) => void;
@@ -201,7 +216,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     socket.on("presence", (payload: { playerId: string; isConnected: boolean }) => {
       set((state) => {
         if (!state.currentView) return state;
-        const participants = state.currentView.participants.map((p) =>
+        const participants = state.currentView.participants.map((p: any) =>
           p.id === payload.playerId ? { ...p, isConnected: payload.isConnected } : p,
         );
         return {
@@ -288,14 +303,19 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     clearError: () => set({ errorMessage: null }),
     setSelectedChip: (selectedChip: number) => set({ selectedChip }),
 
-    createRoom: async (password?: string, config?: Partial<RoomConfig>, buyIn?: number) => {
+    createRoom: async (
+      password?: string,
+      config?: any,
+      buyIn?: number,
+      gameType: import("@felt/shared").GameType = "blackjack",
+    ) => {
       const socket = ensureSocket();
       const { displayName, avatarId } = get();
 
       return new Promise<string>((resolve, reject) => {
         socket.emit(
           "room:create",
-          { displayName, avatarId, password, config, buyIn },
+          { displayName, avatarId, password, config, buyIn, gameType },
           (res: {
             ok: boolean;
             data?: { roomCode: string; token: string; participant: { id: string } };
@@ -558,6 +578,56 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     hostApproveRebuy: (targetId: string, amount?: number) => {
       const socket = ensureSocket();
       socket.emit("host:approveRebuy", { targetId, amount });
+    },
+
+    // Poker actions
+    pokerFold: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:fold");
+    },
+    pokerCheck: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:check");
+    },
+    pokerCall: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:call");
+    },
+    pokerBet: (amount: number) => {
+      const socket = ensureSocket();
+      socket.emit("poker:bet", { amount });
+    },
+    pokerRaise: (to: number) => {
+      const socket = ensureSocket();
+      socket.emit("poker:raise", { to });
+    },
+    pokerAllIn: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:allIn");
+    },
+    pokerShowCards: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:showCards");
+    },
+    pokerSeeCards: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:seeCards");
+    },
+    pokerDealNextStreet: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:dealNextStreet");
+    },
+    pokerNextHand: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:nextHand");
+    },
+    pokerSitOut: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:sitOut");
+    },
+    pokerSitIn: () => {
+      const socket = ensureSocket();
+      socket.emit("poker:sitIn");
     },
 
     // Chat

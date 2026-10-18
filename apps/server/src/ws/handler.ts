@@ -62,6 +62,7 @@ export function setupSocketIO(
           displayName: string;
           avatarId: string;
           password?: string;
+          gameType?: import("@felt/shared").GameType;
           config?: import("@felt/shared").RoomConfig;
           buyIn?: number;
           userToken?: string;
@@ -71,6 +72,7 @@ export function setupSocketIO(
       ) => {
         try {
           const room = roomManager.createRoom({
+            gameType: data.gameType,
             config: data.config,
             password: data.password,
             pacingEnabled: options.pacingEnabled,
@@ -91,6 +93,7 @@ export function setupSocketIO(
 
           const response = {
             roomCode: room.roomCode,
+            gameType: room.gameType,
             token,
             participant,
           };
@@ -154,6 +157,7 @@ export function setupSocketIO(
 
           const response = {
             roomCode: room.roomCode,
+            gameType: room.gameType,
             token,
             participant,
             isReconnect,
@@ -700,6 +704,219 @@ export function setupSocketIO(
             { type: "rebuy:request", playerId, amount: data?.amount },
             data?.actionId,
           );
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    // ─── Poker Actions ───────────────────────────────────────────────────────
+
+    socket.on(
+      "poker:action",
+      (
+        data: {
+          action: "fold" | "check" | "call" | "bet" | "raise" | "allIn";
+          amount?: number;
+          to?: number;
+          actionId?: string;
+        },
+        ack?: (res: unknown) => void,
+      ) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          let action: any;
+          if (data.action === "fold") action = { type: "poker:fold", playerId };
+          else if (data.action === "check") action = { type: "poker:check", playerId };
+          else if (data.action === "call") action = { type: "poker:call", playerId };
+          else if (data.action === "bet") action = { type: "poker:bet", playerId, amount: data.amount ?? 0 };
+          else if (data.action === "raise") action = { type: "poker:raise", playerId, to: data.to ?? data.amount ?? 0 };
+          else if (data.action === "allIn") action = { type: "poker:allIn", playerId };
+          else if (data.action === "seeCards") action = { type: "poker:seeCards", playerId };
+          else throw new EngineError("ILLEGAL_ACTION", `Unknown poker action: ${data.action}`);
+
+          room.dispatch(playerId, action, data.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:fold",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:fold", playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:check",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:check", playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:call",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:call", playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:bet",
+      (data: { amount: number; actionId?: string }, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(
+            playerId,
+            { type: "poker:bet", playerId, amount: data.amount },
+            data.actionId,
+          );
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:raise",
+      (
+        data: { to?: number; amount?: number; actionId?: string },
+        ack?: (res: unknown) => void,
+      ) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(
+            playerId,
+            { type: "poker:raise", playerId, to: data.to ?? data.amount ?? 0 },
+            data.actionId,
+          );
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:allIn",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:allIn", playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:showCards",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:showCards", playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:seeCards",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:seeCards", playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:dealNextStreet",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:dealNextStreet", actorId: playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:nextHand",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:nextHand", actorId: playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:startHand",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:startHand", actorId: playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:sitOut",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:sitOut", playerId }, data?.actionId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
+    socket.on(
+      "poker:sitIn",
+      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.dispatch(playerId, { type: "poker:sitIn", playerId }, data?.actionId);
           if (ack) ack({ ok: true });
         } catch (err) {
           handleError(err, data?.actionId, ack);

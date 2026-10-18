@@ -6,6 +6,7 @@ import { NotificationToast } from "./components/NotificationToast";
 import { LandingScreen } from "./screens/LandingScreen";
 import { LobbyScreen } from "./screens/LobbyScreen";
 import { TableScreen } from "./screens/TableScreen";
+import { PokerTableScreen } from "./screens/PokerTableScreen";
 import { useGameStore } from "./store/game-store";
 import { useSettingsStore } from "./store/settings-store";
 
@@ -98,6 +99,10 @@ const RoomRoute: React.FC = () => {
   }
 
   // Active game session
+  if (currentView.gameType === "poker") {
+    return <PokerTableScreen />;
+  }
+
   return <TableScreen />;
 };
 

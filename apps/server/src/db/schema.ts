@@ -12,9 +12,11 @@ export const users = pgTable("users", {
 export const sessionSummaries = pgTable("session_summaries", {
   id: uuid("id").primaryKey().defaultRandom(),
   roomCode: varchar("room_code", { length: 12 }).notNull(),
+  gameType: varchar("game_type", { length: 30 }).notNull().default("blackjack"),
   startedAt: timestamp("started_at").notNull(),
   endedAt: timestamp("ended_at").defaultNow().notNull(),
   rounds: integer("rounds").notNull(),
+  handsPlayed: integer("hands_played"),
   hostUserId: uuid("host_user_id").references(() => users.id, { onDelete: "set null" }),
 });
 

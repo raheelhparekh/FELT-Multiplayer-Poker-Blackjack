@@ -56,8 +56,9 @@ export const HeaderBar: React.FC = () => {
   if (!currentView) return null;
 
   const isHost = currentView.hostId === myPlayerId;
-  const phase = currentView.phase;
-  const round = currentView.roundNumber;
+  const phase = currentView.phase as string;
+  const isPoker = currentView.gameType === "poker";
+  const round = currentView.roundNumber ?? (currentView as any).handNumber ?? 0;
   const code = roomCode || currentView.roomCode;
 
   const handleCopyCode = async () => {
@@ -132,6 +133,18 @@ export const HeaderBar: React.FC = () => {
         return {
           text: "SETTLE",
           short: "WIN",
+          color: "bg-gold-400/20 text-gold-300 border-gold-400/30",
+        };
+      case "showdown":
+        return {
+          text: "SHOWDOWN",
+          short: "SHOW",
+          color: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+        };
+      case "hand_summary":
+        return {
+          text: "HAND OVER",
+          short: "OVER",
           color: "bg-gold-400/20 text-gold-300 border-gold-400/30",
         };
       case "round_summary":
@@ -214,7 +227,9 @@ export const HeaderBar: React.FC = () => {
             )}
 
             {round > 0 && (
-              <span className="text-[10px] text-emerald-400/70 font-mono shrink-0">R{round}</span>
+              <span className="text-[10px] text-emerald-400/70 font-mono shrink-0">
+                {isPoker ? `H${round}` : `R${round}`}
+              </span>
             )}
           </div>
 
@@ -395,7 +410,9 @@ export const HeaderBar: React.FC = () => {
           )}
 
           {round > 0 && (
-            <span className="text-xs text-emerald-400/80 font-mono shrink-0">R{round}</span>
+            <span className="text-xs text-emerald-400/80 font-mono shrink-0">
+              {isPoker ? `Hand #${round}` : `Round #${round}`}
+            </span>
           )}
         </div>
 

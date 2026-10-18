@@ -1,9 +1,10 @@
 import { randomInt } from "node:crypto";
-import { ROOM, type RoomConfig } from "@felt/shared";
+import { ROOM, type GameType, type RoomConfig } from "@felt/shared";
 import { dbService } from "../db/index.js";
 import { Room } from "./room.js";
 
 export interface CreateRoomOptions {
+  gameType?: GameType | undefined;
   config?: Partial<RoomConfig> | undefined;
   password?: string | undefined;
   pacingEnabled?: boolean | undefined;
@@ -34,6 +35,7 @@ export class RoomManager {
     const code = this.generateRoomCode();
     const room = new Room({
       roomCode: code,
+      gameType: options.gameType,
       config: options.config,
       password: options.password,
       pacingEnabled: options.pacingEnabled,

@@ -16,9 +16,9 @@ export class TestClient {
   public token = "";
   public roomCode = "";
   public displayName = "";
-  public latestSnapshot: ClientGameView | null = null;
+  public latestSnapshot: any = null;
 
-  public receivedSnapshots: Array<{ seq: number; data: ClientGameView }> = [];
+  public receivedSnapshots: Array<{ seq: number; data: any }> = [];
   public receivedEvents: GameEvent[] = [];
   public receivedActivities: ActivityEntry[] = [];
   public receivedChats: ChatMessage[] = [];
@@ -44,8 +44,8 @@ export class TestClient {
         reject(err);
       });
 
-      this.socket.on("snapshot", (payload: { seq: number; data: ClientGameView }) => {
-        this.latestSnapshot = payload.data;
+      this.socket.on("snapshot", (payload: { seq: number; data: any }) => {
+        this.latestSnapshot = { ...payload.data, seq: payload.seq ?? payload.data?.seq };
         this.receivedSnapshots.push(payload);
       });
 
@@ -85,7 +85,9 @@ export class TestClient {
     displayName: string;
     avatarId: string;
     password?: string;
-    config?: RoomConfig;
+    gameType?: import("@felt/shared").GameType;
+    config?: any;
+    buyIn?: number;
   }): Promise<{ roomCode: string; token: string; participant: Participant }> {
     return new Promise((resolve, reject) => {
       if (!this.socket) return reject(new Error("Socket not connected"));
@@ -108,6 +110,87 @@ export class TestClient {
           resolve(res.data);
         },
       );
+    });
+  }
+
+  public async pokerFold(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:fold", {}, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:fold failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerCheck(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:check", {}, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:check failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerCall(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:call", {}, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:call failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerBet(amount: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:bet", { amount }, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:bet failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerRaise(to: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:raise", { to }, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:raise failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerAllIn(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:allIn", {}, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:allIn failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerShowCards(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:showCards", {}, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:showCards failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerSeeCards(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:seeCards", {}, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:seeCards failed"));
+        resolve();
+      });
+    });
+  }
+
+  public async pokerNextHand(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.socket?.emit("poker:nextHand", {}, (res: { ok: boolean; error?: ServerError }) => {
+        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:nextHand failed"));
+        resolve();
+      });
     });
   }
 

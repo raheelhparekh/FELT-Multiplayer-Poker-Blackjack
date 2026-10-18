@@ -82,9 +82,11 @@ class InMemoryDatabaseService implements DatabaseService {
     const summary: SessionSummary = {
       id,
       roomCode: data.roomCode,
+      gameType: data.gameType || "blackjack",
       startedAt: data.startedAt,
       endedAt: data.endedAt || new Date(),
       rounds: data.rounds,
+      handsPlayed: data.handsPlayed || null,
       hostUserId: data.hostUserId || null,
     };
     this.summaries.set(id, summary);
@@ -296,11 +298,16 @@ class PostgresDatabaseService implements DatabaseService {
       CREATE TABLE IF NOT EXISTS session_summaries (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         room_code VARCHAR(12) NOT NULL,
+        game_type VARCHAR(30) NOT NULL DEFAULT 'blackjack',
         started_at TIMESTAMP NOT NULL,
         ended_at TIMESTAMP NOT NULL DEFAULT NOW(),
         rounds INTEGER NOT NULL,
+        hands_played INTEGER,
         host_user_id UUID REFERENCES users(id) ON DELETE SET NULL
       );
+
+      ALTER TABLE session_summaries ADD COLUMN IF NOT EXISTS game_type VARCHAR(30) NOT NULL DEFAULT 'blackjack';
+      ALTER TABLE session_summaries ADD COLUMN IF NOT EXISTS hands_played INTEGER;
 
       CREATE TABLE IF NOT EXISTS session_player_results (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

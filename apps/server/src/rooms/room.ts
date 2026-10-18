@@ -3,6 +3,7 @@ import type {
   ActivityEntry,
   ChatMessage,
   GameAction,
+  PokerAction,
   GameEvent,
   GamePhase,
   Hand,
@@ -21,9 +22,12 @@ import {
   TIMING,
   createInitialState,
   defaultRoomConfig,
+  getGameModule,
   reduce,
   scanForLeaks,
   viewFor,
+  type GameModule,
+  type GameType,
 } from "@felt/shared";
 import type { Socket } from "socket.io";
 import { createActivityEntry, formatEventActivity } from "../activity/activity-logger.js";
@@ -56,7 +60,9 @@ interface QueuedChipAction {
 
 export interface RoomOptions {
   roomCode: string;
-  config?: Partial<RoomConfig> | undefined;
+  gameType?: GameType | undefined;
+  gameModule?: GameModule | undefined;
+  config?: any | undefined;
   password?: string | undefined;
   pacingEnabled?: boolean | undefined;
   onEmptyRoomDestroy?: ((code: string) => void) | undefined;
@@ -74,6 +80,8 @@ export interface JoinParams {
 export class Room {
   public readonly roomCode: string;
   public readonly password?: string;
+  public readonly gameType: GameType;
+  public readonly gameModule: GameModule;
   public config: RoomConfig;
   public state: import("@felt/shared").GameState;
   public hostId = "";
@@ -114,12 +122,14 @@ export class Room {
   constructor(options: RoomOptions) {
     this.roomCode = options.roomCode.toUpperCase();
     if (options.password) this.password = options.password;
-    const baseConfig = defaultRoomConfig();
-    this.config = options.config ? { ...baseConfig, ...options.config } : baseConfig;
+    this.gameModule = options.gameModule ?? getGameModule(options.gameType ?? "blackjack");
+    this.gameType = this.gameModule.id;
+    const baseConfig = this.gameModule.defaultConfig;
+    this.config = options.config ? { ...baseConfig, ...options.config } : { ...baseConfig };
     this.pacingEnabled = options.pacingEnabled ?? true;
     this.onEmptyRoomDestroy = options.onEmptyRoomDestroy;
 
-    this.state = createInitialState(this.roomCode, this.config);
+    this.state = this.gameModule.createState(this.roomCode, this.config);
   }
 
   // ─── Lifecycle / Sockets ───────────────────────────────────────────────────
@@ -399,12 +409,29 @@ export class Room {
       // In lobby, host disconnect immediately auto-transfers to next eligible player
       this.autoTransferHost(playerId);
     } else if (
+      this.gameType === "poker" &&
+      isGameActive &&
+      this.state.phase === "betting" &&
+      (this.state as any).toActPlayerId === playerId
+    ) {
+      if (this.config.actionTimerSec) {
+        // Normal actionTimer will fire and auto-act
+      } else {
+        const graceTmr = setTimeout(() => {
+          this._onDisconnectGraceExpired(playerId);
+        }, ROOM.DISCONNECT_GRACE_SECONDS * 1000);
+        this.disconnectGraceTimers.set(playerId, graceTmr);
+        this.addActivity(
+          `${participant.displayName}'s turn — auto-fold in ${ROOM.DISCONNECT_GRACE_SECONDS}s (disconnected)`,
+        );
+      }
+    } else if (
       isGameActive &&
       this.state.phase === "player_turns" &&
       this.state.activeHandId !== null
     ) {
       // Active player disconnected during their turn
-      const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
+      const activeHand = this.state.hands?.find((h: Hand) => h.id === this.state.activeHandId);
       if (activeHand && activeHand.playerId === playerId) {
         if (this.config.actionTimerSec) {
           // Timer is enabled — normal expiry will auto-stand
@@ -519,11 +546,25 @@ export class Room {
   /** Called when the 20s disconnect grace expires for an active player (timers disabled). */
   private _onDisconnectGraceExpired(playerId: string): void {
     this.disconnectGraceTimers.delete(playerId);
-    if (this.isDestroyed) return;
-    if (this.state.phase !== "player_turns" || !this.state.activeHandId) return;
-    if (this.state.isPaused) return;
+    if (this.isDestroyed || this.state.isPaused) return;
 
-    const activeHand = this.state.hands.find((h: Hand) => h.id === this.state.activeHandId);
+    if (this.gameType === "poker") {
+      const pokerState = this.state as any;
+      if (pokerState.phase !== "betting" || pokerState.toActPlayerId !== playerId) return;
+      const timeoutAction = this.gameModule.onDisconnect(this.state, playerId);
+      if (timeoutAction) {
+        try {
+          this.dispatchEngineAction(timeoutAction);
+        } catch {
+          // Ignore
+        }
+      }
+      return;
+    }
+
+    if (this.state.phase !== "player_turns" || !this.state.activeHandId) return;
+
+    const activeHand = this.state.hands?.find((h: Hand) => h.id === this.state.activeHandId);
     if (!activeHand || activeHand.playerId !== playerId) return;
 
     const p = this.participants.get(playerId);
@@ -564,14 +605,16 @@ export class Room {
     if (!p) throw new EngineError("ILLEGAL_ACTION", "Participant not found");
     if (!p.isConnected) throw new EngineError("ILLEGAL_ACTION", "Participant is not connected");
 
-    if (playerId === this.dealerId) {
+    if (this.gameType === "blackjack" && playerId === this.dealerId) {
       throw new EngineError("ILLEGAL_ACTION", "The Dealer cannot take a player seat");
     }
 
-    if (seat < 1 || seat > this.config.maxPlayerSeats) {
+    const maxSeats =
+      this.gameType === "poker" ? ((this.config as any).maxSeats ?? 9) : this.config.maxPlayerSeats;
+    if (seat < 1 || seat > maxSeats) {
       throw new EngineError(
         "ILLEGAL_ACTION",
-        `Seat number must be between 1 and ${this.config.maxPlayerSeats}`,
+        `Seat number must be between 1 and ${maxSeats}`,
       );
     }
 
@@ -597,6 +640,47 @@ export class Room {
     seatedPlayers.set(seatNum, playerId);
     this.state = { ...this.state, seatedPlayers };
 
+    if (this.gameType === "poker") {
+      const pokerState = this.state as any;
+      const initialStack =
+        this.state.stacks?.get(playerId) ?? (this.config as any).startingStack ?? 1000;
+      if (!pokerState.players) {
+        pokerState.players = new Map();
+      }
+      if (!pokerState.players.has(playerId)) {
+        pokerState.players.set(playerId, {
+          id: playerId,
+          seatNumber: seatNum,
+          holeCards: [],
+          stack: initialStack,
+          committedThisRound: 0,
+          committedThisHand: 0,
+          hasFolded: false,
+          isAllIn: false,
+          actedThisRound: false,
+          hasSeenCards: false,
+        });
+      } else {
+        const existing = pokerState.players.get(playerId);
+        existing.seatNumber = seatNum;
+      }
+      if (!pokerState.stacks) pokerState.stacks = new Map();
+      pokerState.stacks.set(playerId, initialStack);
+      if (!pokerState.totalBuyIns) pokerState.totalBuyIns = new Map();
+      if (!pokerState.totalBuyIns.has(playerId)) {
+        pokerState.totalBuyIns.set(playerId, initialStack);
+      }
+      if (!pokerState.initialBuyIns) pokerState.initialBuyIns = new Map();
+      if (!pokerState.initialBuyIns.has(playerId)) {
+        pokerState.initialBuyIns.set(playerId, initialStack);
+      }
+      if (!pokerState.rebuys) pokerState.rebuys = new Map();
+      if (!pokerState.rebuys.has(playerId)) {
+        pokerState.rebuys.set(playerId, 0);
+      }
+      pokerState.participants.set(playerId, p);
+    }
+
     this.addActivity(`${p.displayName} sat at seat ${seat}`);
     this.broadcastSnapshot();
   }
@@ -607,16 +691,29 @@ export class Room {
     if (p.seat === null) return;
 
     // Disallow standing mid-round if the player has active hands
-    if (
-      this.state.phase !== "lobby" &&
-      this.state.phase !== "round_summary" &&
-      this.state.phase !== "betting"
-    ) {
-      const hasActiveHand = this.state.hands.some(
-        (h: Hand) => h.playerId === playerId && !h.isLocked,
-      );
-      if (hasActiveHand) {
+    if (this.gameType === "poker") {
+      const pokerPlayer = (this.state as any).players?.get(playerId);
+      if (
+        pokerPlayer &&
+        !pokerPlayer.hasFolded &&
+        (this.state.phase as string) !== "lobby" &&
+        (this.state.phase as string) !== "hand_summary"
+      ) {
         throw new EngineError("ILLEGAL_ACTION", "Cannot stand while playing an active hand");
+      }
+      (this.state as any).players?.delete(playerId);
+    } else {
+      if (
+        this.state.phase !== "lobby" &&
+        this.state.phase !== "round_summary" &&
+        this.state.phase !== "betting"
+      ) {
+        const hasActiveHand = this.state.hands?.some(
+          (h: Hand) => h.playerId === playerId && !h.isLocked,
+        );
+        if (hasActiveHand) {
+          throw new EngineError("ILLEGAL_ACTION", "Cannot stand while playing an active hand");
+        }
       }
     }
 
@@ -632,12 +729,12 @@ export class Room {
     // Clear any pending bets if standing during betting
     let pendingBets = this.state.pendingBets;
     let lockedBets = this.state.lockedBets;
-    if (this.state.phase === "betting") {
-      if (pendingBets.has(playerId)) {
+    if (this.state.phase === "betting" && this.gameType === "blackjack") {
+      if (pendingBets?.has(playerId)) {
         pendingBets = new Map(pendingBets);
         pendingBets.delete(playerId);
       }
-      if (lockedBets.has(playerId)) {
+      if (lockedBets?.has(playerId)) {
         // Return chips to stack
         const locked = lockedBets.get(playerId)!;
         const stacks = new Map(this.state.stacks);
@@ -876,6 +973,10 @@ export class Room {
   // ─── Safe chip-affecting phases check ─────────────────────────────────────
 
   private isActivePlaying(): boolean {
+    if (this.gameType === "poker") {
+      const p = this.state.phase as string;
+      return p === "dealing" || p === "betting" || p === "showdown";
+    }
     return ACTIVE_PHASES.includes(this.state.phase);
   }
 
@@ -1134,16 +1235,26 @@ export class Room {
 
   public startSession(hostId: string): void {
     this.assertHost(hostId);
-    if (!this.dealerId) {
+    if (this.gameType === "blackjack" && !this.dealerId) {
       throw new EngineError("ILLEGAL_ACTION", "Cannot start session without a Dealer assigned");
     }
-    if (this.state.seatedPlayers.size < 1) {
-      throw new EngineError("ILLEGAL_ACTION", "Cannot start session with no seated players");
+    const seatedCount = this.state.seatedPlayers?.size ?? 0;
+    if (this.gameType === "poker" ? seatedCount < 2 : seatedCount < 1) {
+      throw new EngineError(
+        "ILLEGAL_ACTION",
+        this.gameType === "poker"
+          ? "Need at least 2 seated players to start a poker game"
+          : "Cannot start session with no seated players",
+      );
     }
 
     this.sessionStartedAt = Date.now();
     this.dispatchEngineAction({ type: "host:startSession" });
-    this.setupBetTimer();
+    if (this.gameType === "blackjack") {
+      this.setupBetTimer();
+    } else if (this.gameType === "poker") {
+      this.setupPokerActionTimer();
+    }
   }
 
   // ─── Pause / Resume (properly freezing timers) ────────────────────────────
@@ -1501,6 +1612,7 @@ export class Room {
     dbService
       .createSessionSummary({
         roomCode,
+        gameType: this.gameType,
         startedAt,
         endedAt,
         rounds,
@@ -1543,7 +1655,7 @@ export class Room {
 
   // ─── In-Game Actions / Dispatch ───────────────────────────────────────────
 
-  public dispatch(playerId: string, action: GameAction, actionId?: string): void {
+  public dispatch(playerId: string, action: GameAction | PokerAction, actionId?: string): void {
     if (actionId) {
       const cached = this.actionDeduplication.get(actionId);
       if (cached && Date.now() - cached.timestamp < 60_000) {
@@ -1571,6 +1683,32 @@ export class Room {
           throw new EngineError(
             "NOT_DEALER",
             "Only the dealer or host can advance to the next round",
+          );
+        }
+        break;
+      }
+      case "poker:dealNextStreet":
+      case "poker:nextHand":
+      case "poker:startHand": {
+        if (playerId !== this.dealerId && playerId !== this.hostId) {
+          throw new EngineError("NOT_DEALER", "Only the dealer or host can perform this action");
+        }
+        break;
+      }
+      case "poker:fold":
+      case "poker:check":
+      case "poker:call":
+      case "poker:bet":
+      case "poker:raise":
+      case "poker:allIn":
+      case "poker:showCards":
+      case "poker:seeCards":
+      case "poker:sitOut":
+      case "poker:sitIn": {
+        if ((action as any).playerId !== playerId) {
+          throw new EngineError(
+            "ILLEGAL_ACTION",
+            "Cannot perform poker actions on behalf of another player",
           );
         }
         break;
@@ -1712,17 +1850,20 @@ export class Room {
     }
   }
 
-  private dispatchEngineAction(action: GameAction): void {
+  private dispatchEngineAction(action: GameAction | PokerAction): void {
     const prevPhase = this.state.phase;
     const prevActiveHandId = this.state.activeHandId;
-    const { state: nextState, events } = reduce(this.state, action);
+    const prevToActPlayerId = (this.state as any).toActPlayerId;
+    const { state: nextState, events } = this.gameModule.reduce(this.state, action);
     this.state = nextState;
 
     // Check for leak on state change (automated test / safety invariant)
-    const view = viewFor(this.state, "dealer");
-    const leaks = scanForLeaks(view, this.state);
-    if (leaks.length > 0) {
-      console.error(`[P0 LEAK DETECTED in room ${this.roomCode}]:`, leaks);
+    if (this.gameModule.scanForLeaks) {
+      const view = this.gameModule.viewFor(this.state, "dealer");
+      const leaks = this.gameModule.scanForLeaks(view, this.state);
+      if (leaks.length > 0) {
+        console.error(`[P0 LEAK DETECTED in room ${this.roomCode}]:`, leaks);
+      }
     }
 
     // Process activities
@@ -1736,8 +1877,9 @@ export class Room {
     // Phase transition timer updates
     this.handlePhaseTransitions(prevPhase, nextState.phase);
 
-    // If still in player_turns and active hand changed or player hit, restart action timer
+    // If still in player_turns and active hand changed or player hit, restart action timer (blackjack)
     if (
+      this.gameType === "blackjack" &&
       prevPhase === "player_turns" &&
       nextState.phase === "player_turns" &&
       nextState.activeHandId &&
@@ -1752,6 +1894,18 @@ export class Room {
       }
     }
 
+    // If still in betting and toActPlayerId changed, restart action timer (poker)
+    if (
+      this.gameType === "poker" &&
+      prevPhase === "betting" &&
+      nextState.phase === "betting" &&
+      (nextState as any).toActPlayerId &&
+      prevToActPlayerId !== (nextState as any).toActPlayerId &&
+      !this.state.isPaused
+    ) {
+      this.setupPokerActionTimer();
+    }
+
     // Update table status message after every action
     this.updateTableStatusMessage();
 
@@ -1760,6 +1914,71 @@ export class Room {
 
   private handlePhaseTransitions(prevPhase: GamePhase, newPhase: GamePhase): void {
     if (prevPhase === newPhase) return;
+
+    if (this.gameType === "poker") {
+      const np = newPhase as string;
+      if (np === "betting") {
+        this.clearActionTimer();
+        this.applyQueuedChipActions();
+        this.setupPokerActionTimer();
+      } else if (np === "hand_summary") {
+        this.clearActionTimer();
+        this.roundCount = (this.state as any).handNumber ?? 0;
+        this.applyQueuedChipActions();
+        this.setupPokerNextHandTimer();
+
+        // Record poker hand transactions for financial ledger
+        const pokerState = this.state as any;
+        const winners: any[] = pokerState.winners ?? [];
+        const winnerMap = new Map<string, { amount: number; handName: string }>();
+        for (const w of winners) {
+          const existing = winnerMap.get(w.playerId);
+          if (existing) {
+            existing.amount += w.amount;
+          } else {
+            winnerMap.set(w.playerId, { amount: w.amount, handName: w.handName });
+          }
+        }
+
+        if (pokerState.players) {
+          for (const [pid, p] of pokerState.players.entries()) {
+            const participant = this.participants.get(pid);
+            const name = participant ? participant.displayName : pid;
+            const currentBalance = p.stack;
+            if (this.state.stacks) {
+              this.state.stacks.set(pid, currentBalance);
+            }
+            const winInfo = winnerMap.get(pid);
+            if (winInfo) {
+              this.addTransaction({
+                id: randomUUID(),
+                roundNumber: this.roundCount,
+                playerId: pid,
+                displayName: name,
+                type: "round_win",
+                amount: winInfo.amount,
+                balanceAfter: currentBalance,
+                details: `Hand #${this.roundCount} Win (${winInfo.handName})`,
+                timestamp: Date.now(),
+              });
+            } else if (p.committedThisHand > 0) {
+              this.addTransaction({
+                id: randomUUID(),
+                roundNumber: this.roundCount,
+                playerId: pid,
+                displayName: name,
+                type: "round_loss",
+                amount: p.committedThisHand,
+                balanceAfter: currentBalance,
+                details: `Hand #${this.roundCount} Pot Contribution`,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+      }
+      return;
+    }
 
     if (newPhase === "betting") {
       this.clearActionTimer();
@@ -1850,6 +2069,33 @@ export class Room {
       if (!this.state.tableStatusMessage || !this.state.waitingForReconnect) {
         this.state = { ...this.state, tableStatusMessage: "Game paused by host" };
       }
+      return;
+    }
+
+    if (this.gameType === "poker") {
+      const pokerState = this.state as any;
+      let msg: string | null = null;
+      switch (pokerState.phase) {
+        case "lobby":
+          msg = "Waiting for host to start poker session";
+          break;
+        case "dealing":
+          msg = "Dealing cards…";
+          break;
+        case "betting": {
+          const activeP = this.participants.get(pokerState.toActPlayerId);
+          const name = activeP ? activeP.displayName : "player";
+          msg = `Waiting for ${name} to act`;
+          break;
+        }
+        case "showdown":
+          msg = "Showdown!";
+          break;
+        case "hand_summary":
+          msg = "Hand complete";
+          break;
+      }
+      this.state = { ...this.state, tableStatusMessage: msg };
       return;
     }
 
@@ -2037,6 +2283,50 @@ export class Room {
     this.state.insuranceDeadline = null;
   }
 
+  private setupPokerActionTimer(): void {
+    this.clearActionTimer();
+    const pokerState = this.state as any;
+    if (!pokerState.toActPlayerId) return;
+
+    const timerSec = this.config.actionTimerSec ?? 30;
+    pokerState.actionDeadline = Date.now() + timerSec * 1000;
+
+    this.actionTimer = setTimeout(() => {
+      this.handlePokerActionTimeout();
+    }, timerSec * 1000);
+  }
+
+  private handlePokerActionTimeout(): void {
+    const pokerState = this.state as any;
+    if (pokerState.phase !== "betting" || !pokerState.toActPlayerId || pokerState.isPaused) return;
+
+    const timeoutAction = this.gameModule.onTimeout(this.state, pokerState.toActPlayerId);
+    if (timeoutAction) {
+      try {
+        this.dispatchEngineAction(timeoutAction);
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
+  private setupPokerNextHandTimer(): void {
+    this.clearActionTimer();
+    const pokerState = this.state as any;
+    const delaySec = (this.config as any).autoNextHandDelaySec ?? 5;
+    if (!delaySec || delaySec <= 0) return;
+
+    pokerState.handSummaryDeadline = Date.now() + delaySec * 1000;
+    this.actionTimer = setTimeout(() => {
+      if (this.isDestroyed || (this.state.phase as string) !== "hand_summary" || this.state.isPaused) return;
+      try {
+        this.dispatchEngineAction({ type: "poker:nextHand" });
+      } catch {
+        // Ignore
+      }
+    }, delaySec * 1000);
+  }
+
   /** Clear only game-related timers (not seat hold, empty room, or grace timers). */
   private _clearGameTimers(): void {
     this.clearBetTimer();
@@ -2173,7 +2463,7 @@ export class Room {
 
   public broadcastSnapshot(): void {
     for (const [playerId, socket] of this.sockets) {
-      const view = viewFor(this.state, playerId);
+      const view = this.gameModule.viewFor(this.state, playerId);
       view.transactions = this.transactions;
       // Include pending chip adjustment player IDs
       if (this.queuedChipActions.length > 0) {
@@ -2183,6 +2473,7 @@ export class Room {
       }
       socket.emit("snapshot", {
         type: "snapshot",
+        gameType: this.gameType,
         seq: this.state.seq,
         data: view,
         chatLog: this.chatLog,
@@ -2275,6 +2566,7 @@ export class Room {
     return JSON.stringify({
       _version: ROOM.SNAPSHOT_VERSION,
       roomCode: this.roomCode,
+      gameType: this.gameType,
       password: this.password,
       config: this.config,
       hostId: this.hostId,
@@ -2291,12 +2583,13 @@ export class Room {
         totalBuyIns: Array.from(this.state.totalBuyIns.entries()),
         initialBuyIns: Array.from((this.state.initialBuyIns ?? new Map()).entries()),
         rebuys: Array.from((this.state.rebuys ?? new Map()).entries()),
-        pendingBets: Array.from(this.state.pendingBets.entries()),
-        lastBets: Array.from(this.state.lastBets.entries()),
-        lockedBets: Array.from(this.state.lockedBets.entries()),
-        insuranceDecisions: Array.from(this.state.insuranceDecisions.entries()),
-        sittingOut: Array.from(this.state.sittingOut.values()),
-        insurancePending: Array.from(this.state.insurancePending.values()),
+        pendingBets: Array.from((this.state.pendingBets ?? new Map()).entries()),
+        lastBets: Array.from((this.state.lastBets ?? new Map()).entries()),
+        lockedBets: Array.from((this.state.lockedBets ?? new Map()).entries()),
+        insuranceDecisions: Array.from((this.state.insuranceDecisions ?? new Map()).entries()),
+        sittingOut: Array.from((this.state.sittingOut ?? new Set()).values()),
+        insurancePending: Array.from((this.state.insurancePending ?? new Set()).values()),
+        players: Array.from((this.state as any).players?.entries() ?? []),
       },
       participants: Array.from(this.participants.entries()).map(([id, p]) => [
         id,
@@ -2333,6 +2626,7 @@ export class Room {
 
     const room = new Room({
       roomCode: data.roomCode,
+      gameType: data.gameType ?? "blackjack",
       password: data.password,
       config: data.config,
       pacingEnabled: data.pacingEnabled,
@@ -2359,6 +2653,7 @@ export class Room {
       insuranceDecisions: new Map(data.state.insuranceDecisions || []),
       sittingOut: new Set(data.state.sittingOut || []),
       insurancePending: new Set(data.state.insurancePending || []),
+      players: data.state.players ? new Map(data.state.players) : undefined,
       // New fields with defaults for old snapshots
       insuranceDeadline: data.state.insuranceDeadline ?? null,
       pausedRemainingMs: data.state.pausedRemainingMs ?? null,

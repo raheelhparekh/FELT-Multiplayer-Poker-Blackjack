@@ -110,7 +110,9 @@ describe("Host Recovery Controls", () => {
     await player.betLock();
 
     // Record stack after bet locked (bet deducted)
-    const snapAfterBet = player.latestSnapshot!;
+    const snapAfterBet = await player.waitForSnapshot(
+      (s) => (s.lockedBets?.[player.playerId] ?? 0) === 200,
+    );
     const stackAfterBet = snapAfterBet.stacks[player.playerId]!;
 
     // Deal to get into active play
@@ -281,11 +283,25 @@ describe("Host Recovery Controls", () => {
     await player.joinRoom({ code: roomCode, displayName: "Bob", avatarId: "av-2" });
     await player.sit(1);
     await host.startSession();
-    await player.waitForPhase("betting");
-    await player.betAdd(100);
-    await player.betLock();
-    await host.emitIntent("dealer:deal");
-    await player.waitForPhase("player_turns");
+    // Loop until we reach player_turns (insurance may appear)
+    while (true) {
+      await player.waitForPhase("betting");
+      await player.betAdd(100);
+      await player.betLock();
+      await host.emitIntent("dealer:deal");
+      const snap = await player.waitForSnapshot(
+        (s) => s.phase !== "betting" && s.phase !== "dealing",
+      );
+      if (snap.phase === "insurance") {
+        const hand = snap.hands.find((h) => h.playerId === player.playerId);
+        if (hand) await player.playInsurance(hand.id, false);
+      }
+      const postSnap = await player.waitForSnapshot(
+        (s) => s.phase === "player_turns" || s.phase === "round_summary",
+      );
+      if (postSnap.phase === "player_turns") break;
+      await host.dealerNextRound();
+    }
 
     // Player tries to force stand — should fail
     await expect(player.emitIntent("host:forceStand")).rejects.toThrow(/host/i);

@@ -181,6 +181,13 @@ describe("Chip Action Queuing", () => {
     await player.betAdd(100);
     await player.betLock();
     await host.emitIntent("dealer:deal");
+    const dealSnap = await player.waitForSnapshot(
+      (s) => s.phase !== "betting" && s.phase !== "dealing",
+    );
+    if (dealSnap.phase === "insurance") {
+      const hand = dealSnap.hands.find((h) => h.playerId === player.playerId);
+      if (hand) await player.playInsurance(hand.id, false);
+    }
     await player.waitForPhase("player_turns");
 
     const handId = player.latestSnapshot!.activeHandId!;

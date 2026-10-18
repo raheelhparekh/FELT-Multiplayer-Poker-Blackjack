@@ -39,6 +39,7 @@ export interface ClientHand {
 
 export interface ClientGameView {
   roomCode: string;
+  gameType?: import("../types/domain.js").GameType | undefined;
   phase: GamePhase;
   config: RoomConfig;
   roundNumber: number;
@@ -102,6 +103,7 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
 
   return {
     roomCode: state.roomCode,
+    gameType: "blackjack",
     phase: state.phase,
     config: state.config,
     roundNumber: state.roundNumber,

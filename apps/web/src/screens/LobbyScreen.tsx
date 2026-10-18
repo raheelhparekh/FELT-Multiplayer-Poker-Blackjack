@@ -24,20 +24,22 @@ export const LobbyScreen: React.FC = () => {
 
   if (!currentView) return null;
 
+  const isPoker = currentView.gameType === "poker";
   const { participants, config, dealerId, hostId } = currentView;
   const isHost = myPlayerId === hostId;
   const myParticipant = participants.find((p) => p.id === myPlayerId);
   const mySeat = myParticipant?.seat ?? null;
 
-  // Seats 1 to 7
-  const seats: SeatNumber[] = [1, 2, 3, 4, 5, 6, 7];
+  // Seats 1 to maxSeats (7 for BJ, 9 for Poker)
+  const maxSeats = isPoker ? ((config as any).maxSeats ?? 9) : 7;
+  const seats: SeatNumber[] = Array.from({ length: maxSeats }, (_, i) => (i + 1) as SeatNumber);
 
   const handleShare = async () => {
     const shareUrl = window.location.href;
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "Join my Blackjack Table on FELT",
+          title: `Join my ${isPoker ? "Texas Hold'em" : "Blackjack"} Table on FELT`,
           text: `Join table ${roomCode}!`,
           url: shareUrl,
         });
@@ -74,7 +76,7 @@ export const LobbyScreen: React.FC = () => {
               Table Room: <span className="text-gold-300 font-mono">{roomCode}</span>
             </h1>
             <p className="text-xs text-emerald-400/80">
-              {participants.length} player(s) in room • {seatedCount}/7 seats occupied
+              {participants.length} player(s) in room • {seatedCount}/{maxSeats} seats occupied
             </p>
           </div>
 
@@ -188,47 +190,49 @@ export const LobbyScreen: React.FC = () => {
         )}
 
         {/* Dealer Assignment & Table Rules */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Dealer Assignment */}
-          <div className="bg-[#09180e] border border-emerald-900/60 rounded-3xl p-5 shadow-xl space-y-3">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-emerald-300">
-              Dealer Selection
-            </h2>
-            <div className="text-xs text-emerald-400/80">
-              Designated Dealer:{" "}
-              <strong className="text-white">
-                {participants.find((p) => p.id === dealerId)?.displayName ?? "Host"}
-              </strong>
-            </div>
-
-            {isHost && (
-              <div className="pt-1">
-                <span className="text-[11px] text-emerald-500 block mb-1">Assign Dealer to:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {participants.map((p) => (
-                    <button
-                      key={`dealer-sel-${p.id}`}
-                      type="button"
-                      onClick={() => setDealer(p.id)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-                        dealerId === p.id
-                          ? "bg-gold-400/20 text-gold-300 border-gold-400 shadow"
-                          : "bg-black/30 border-emerald-800 text-emerald-300 hover:bg-black/50"
-                      }`}
-                    >
-                      {p.displayName}
-                    </button>
-                  ))}
-                </div>
+        <div className={`grid grid-cols-1 ${!isPoker ? "md:grid-cols-2" : ""} gap-4`}>
+          {/* Dealer Assignment (Blackjack only) */}
+          {!isPoker && (
+            <div className="bg-[#09180e] border border-emerald-900/60 rounded-3xl p-5 shadow-xl space-y-3">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-emerald-300">
+                Dealer Selection
+              </h2>
+              <div className="text-xs text-emerald-400/80">
+                Designated Dealer:{" "}
+                <strong className="text-white">
+                  {participants.find((p) => p.id === dealerId)?.displayName ?? "Host"}
+                </strong>
               </div>
-            )}
-          </div>
+
+              {isHost && (
+                <div className="pt-1">
+                  <span className="text-[11px] text-emerald-500 block mb-1">Assign Dealer to:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {participants.map((p) => (
+                      <button
+                        key={`dealer-sel-${p.id}`}
+                        type="button"
+                        onClick={() => setDealer(p.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                          dealerId === p.id
+                            ? "bg-gold-400/20 text-gold-300 border-gold-400 shadow"
+                            : "bg-black/30 border-emerald-800 text-emerald-300 hover:bg-black/50"
+                        }`}
+                      >
+                        {p.displayName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Table Rules (Host editable) */}
           <div className="bg-[#09180e] border border-emerald-900/60 rounded-3xl p-5 shadow-xl space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider text-emerald-300">
-                Table Rules
+                Table Rules {isPoker ? "(Texas Hold'em)" : ""}
               </h2>
               {isHost && (
                 <span className="text-[10px] text-gold-400 font-semibold bg-gold-400/10 px-2 py-0.5 rounded border border-gold-400/30">
@@ -237,147 +241,223 @@ export const LobbyScreen: React.FC = () => {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {/* Decks */}
-              <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
-                <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
-                  Decks
-                </span>
-                {isHost ? (
-                  <select
-                    aria-label="Number of card decks"
-                    value={config.decks}
-                    onChange={(e) =>
-                      updateConfig({
-                        decks: Number.parseInt(e.target.value, 10) as 1 | 2 | 4 | 6 | 8,
-                      })
-                    }
-                    className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
-                  >
-                    {[1, 2, 4, 6, 8].map((d) => (
-                      <option key={d} value={d}>
-                        {d} {d === 1 ? "Deck" : "Decks"}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="font-bold text-white font-mono">{config.decks} Decks</span>
-                )}
-              </div>
-
-              {/* Blackjack Payout */}
-              <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
-                <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
-                  BJ Payout
-                </span>
-                {isHost ? (
-                  <select
-                    aria-label="Blackjack payout ratio"
-                    value={config.blackjackPayout}
-                    onChange={(e) =>
-                      updateConfig({ blackjackPayout: e.target.value as "3:2" | "6:5" })
-                    }
-                    className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
-                  >
-                    <option value="3:2">3:2 (Standard)</option>
-                    <option value="6:5">6:5</option>
-                  </select>
-                ) : (
-                  <span className="font-bold text-white font-mono">{config.blackjackPayout}</span>
-                )}
-              </div>
-
-              {/* Dealer Rule */}
-              <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
-                <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
-                  Dealer Rule
-                </span>
-                {isHost ? (
-                  <select
-                    aria-label="Dealer soft 17 rule"
-                    value={config.dealerHitsSoft17 ? "H17" : "S17"}
-                    onChange={(e) => updateConfig({ dealerHitsSoft17: e.target.value === "H17" })}
-                    className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-semibold text-xs"
-                  >
-                    <option value="S17">Stands on 17 (S17)</option>
-                    <option value="H17">Hits Soft 17 (H17)</option>
-                  </select>
-                ) : (
-                  <span className="font-bold text-white">
-                    {config.dealerHitsSoft17 ? "Hits Soft 17 (H17)" : "Stands on 17 (S17)"}
-                  </span>
-                )}
-              </div>
-
-              {/* Double Rule */}
-              <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
-                <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
-                  Double Down
-                </span>
-                {isHost ? (
-                  <select
-                    aria-label="Double down restriction"
-                    value={config.doubleRestriction}
-                    onChange={(e) =>
-                      updateConfig({ doubleRestriction: e.target.value as "9-11" | "any" })
-                    }
-                    className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-semibold text-xs"
-                  >
-                    <option value="9-11">Hard 9, 10, 11 only</option>
-                    <option value="any">Any initial 2 cards</option>
-                  </select>
-                ) : (
-                  <span className="font-bold text-white">
-                    {config.doubleRestriction === "9-11" ? "9, 10, 11 only" : "Any 2 cards"}
-                  </span>
-                )}
-              </div>
-
-              {/* Limits */}
-              <div className="col-span-2 bg-black/30 p-2.5 rounded-xl border border-emerald-900/40 flex items-center justify-between gap-3">
-                <div className="flex-1">
+            {isPoker ? (
+              /* Poker Rules */
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
                   <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
-                    Min Bet
+                    Small Blind
                   </span>
                   {isHost ? (
                     <input
                       type="number"
-                      defaultValue={config.minBet}
+                      min={5}
+                      defaultValue={(config as any).smallBlind ?? 50}
                       onBlur={(e) => {
                         const val = Number.parseInt(e.target.value, 10);
-                        if (val > 0) updateConfig({ minBet: val });
+                        if (val > 0) updateConfig({ smallBlind: val });
                       }}
                       className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
                     />
                   ) : (
-                    <span className="font-bold text-white font-mono">₹{config.minBet}</span>
+                    <span className="font-bold text-white font-mono">₹{(config as any).smallBlind ?? 50}</span>
                   )}
                 </div>
-                <div className="flex-1">
+
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
                   <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
-                    Max Bet (Max ₹5,000)
+                    Big Blind
                   </span>
                   {isHost ? (
                     <input
                       type="number"
-                      min={1}
-                      max={5000}
-                      defaultValue={config.maxBet}
+                      min={10}
+                      defaultValue={(config as any).bigBlind ?? 100}
                       onBlur={(e) => {
-                        const raw = Number.parseInt(e.target.value, 10);
-                        if (raw > 0) {
-                          const val = Math.min(5000, Math.max(1, raw));
-                          updateConfig({ maxBet: val });
-                        }
+                        const val = Number.parseInt(e.target.value, 10);
+                        if (val > 0) updateConfig({ bigBlind: val });
                       }}
                       className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
                     />
                   ) : (
-                    <span className="font-bold text-white font-mono">₹{config.maxBet}</span>
+                    <span className="font-bold text-white font-mono">₹{(config as any).bigBlind ?? 100}</span>
                   )}
                 </div>
+
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
+                  <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                    Action Timer
+                  </span>
+                  {isHost ? (
+                    <select
+                      aria-label="Poker action timer"
+                      value={(config as any).actionTimer ?? 30}
+                      onChange={(e) =>
+                        updateConfig({ actionTimer: Number.parseInt(e.target.value, 10) })
+                      }
+                      className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
+                    >
+                      <option value={15}>15s</option>
+                      <option value={30}>30s</option>
+                      <option value={45}>45s</option>
+                      <option value={60}>60s</option>
+                    </select>
+                  ) : (
+                    <span className="font-bold text-white font-mono">{(config as any).actionTimer ?? 30}s</span>
+                  )}
+                </div>
+
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
+                  <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                    Max Seats
+                  </span>
+                  <span className="font-bold text-white font-mono">{maxSeats} Seats</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Blackjack Rules */
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {/* Decks */}
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
+                  <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                    Decks
+                  </span>
+                  {isHost ? (
+                    <select
+                      aria-label="Number of card decks"
+                      value={config.decks}
+                      onChange={(e) =>
+                        updateConfig({
+                          decks: Number.parseInt(e.target.value, 10) as 1 | 2 | 4 | 6 | 8,
+                        })
+                      }
+                      className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
+                    >
+                      {[1, 2, 4, 6, 8].map((d) => (
+                        <option key={d} value={d}>
+                          {d} {d === 1 ? "Deck" : "Decks"}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="font-bold text-white font-mono">{config.decks} Decks</span>
+                  )}
+                </div>
+
+                {/* Blackjack Payout */}
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
+                  <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                    BJ Payout
+                  </span>
+                  {isHost ? (
+                    <select
+                      aria-label="Blackjack payout ratio"
+                      value={config.blackjackPayout}
+                      onChange={(e) =>
+                        updateConfig({ blackjackPayout: e.target.value as "3:2" | "6:5" })
+                      }
+                      className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
+                    >
+                      <option value="3:2">3:2 (Standard)</option>
+                      <option value="6:5">6:5</option>
+                    </select>
+                  ) : (
+                    <span className="font-bold text-white font-mono">{config.blackjackPayout}</span>
+                  )}
+                </div>
+
+                {/* Dealer Rule */}
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
+                  <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                    Dealer Rule
+                  </span>
+                  {isHost ? (
+                    <select
+                      aria-label="Dealer soft 17 rule"
+                      value={config.dealerHitsSoft17 ? "H17" : "S17"}
+                      onChange={(e) => updateConfig({ dealerHitsSoft17: e.target.value === "H17" })}
+                      className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-semibold text-xs"
+                    >
+                      <option value="S17">Stands on 17 (S17)</option>
+                      <option value="H17">Hits Soft 17 (H17)</option>
+                    </select>
+                  ) : (
+                    <span className="font-bold text-white">
+                      {config.dealerHitsSoft17 ? "Hits Soft 17 (H17)" : "Stands on 17 (S17)"}
+                    </span>
+                  )}
+                </div>
+
+                {/* Double Rule */}
+                <div className="bg-black/30 p-2.5 rounded-xl border border-emerald-900/40">
+                  <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                    Double Down
+                  </span>
+                  {isHost ? (
+                    <select
+                      aria-label="Double down restriction"
+                      value={config.doubleRestriction}
+                      onChange={(e) =>
+                        updateConfig({ doubleRestriction: e.target.value as "9-11" | "any" })
+                      }
+                      className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-semibold text-xs"
+                    >
+                      <option value="9-11">Hard 9, 10, 11 only</option>
+                      <option value="any">Any initial 2 cards</option>
+                    </select>
+                  ) : (
+                    <span className="font-bold text-white">
+                      {config.doubleRestriction === "9-11" ? "9, 10, 11 only" : "Any 2 cards"}
+                    </span>
+                  )}
+                </div>
+
+                {/* Limits */}
+                <div className="col-span-2 bg-black/30 p-2.5 rounded-xl border border-emerald-900/40 flex items-center justify-between gap-3">
+                  <div className="flex-1">
+                    <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                      Min Bet
+                    </span>
+                    {isHost ? (
+                      <input
+                        type="number"
+                        defaultValue={config.minBet}
+                        onBlur={(e) => {
+                          const val = Number.parseInt(e.target.value, 10);
+                          if (val > 0) updateConfig({ minBet: val });
+                        }}
+                        className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
+                      />
+                    ) : (
+                      <span className="font-bold text-white font-mono">₹{config.minBet}</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-emerald-500 block text-[10px] uppercase font-bold mb-1">
+                      Max Bet (Max ₹5,000)
+                    </span>
+                    {isHost ? (
+                      <input
+                        type="number"
+                        min={1}
+                        max={5000}
+                        defaultValue={config.maxBet}
+                        onBlur={(e) => {
+                          const raw = Number.parseInt(e.target.value, 10);
+                          if (raw > 0) {
+                            const val = Math.min(5000, Math.max(1, raw));
+                            updateConfig({ maxBet: val });
+                          }
+                        }}
+                        className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
+                      />
+                    ) : (
+                      <span className="font-bold text-white font-mono">₹{config.maxBet}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -386,17 +466,22 @@ export const LobbyScreen: React.FC = () => {
           {isHost ? (
             <button
               type="button"
-              disabled={seatedCount === 0}
+              disabled={isPoker ? seatedCount < 2 : seatedCount === 0}
               onClick={() => startSession()}
               className="w-full min-h-[52px] py-3.5 rounded-2xl bg-gold-400 hover:bg-gold-300 active:scale-[0.99] disabled:opacity-40 text-black font-black text-sm tracking-wider shadow-2xl transition-all flex items-center justify-center gap-2"
             >
-              <span>Start Blackjack Session</span>
+              <span>{isPoker ? "Start Poker Game" : "Start Blackjack Session"}</span>
               <span className="text-lg">→</span>
             </button>
           ) : (
             <div className="text-center py-4 bg-emerald-950/30 rounded-2xl border border-emerald-900/40 text-xs text-emerald-400">
-              Waiting for the host to start the session... Grab your seat above!
+              Waiting for the host to start the {isPoker ? "poker game" : "session"}... Grab your seat above!
             </div>
+          )}
+          {isHost && isPoker && seatedCount < 2 && (
+            <p className="text-center text-xs text-amber-400/80 mt-1.5 font-medium">
+              At least 2 players must be seated to start Texas Hold'em.
+            </p>
           )}
         </div>
       </main>

@@ -15,6 +15,7 @@ export const RoomCreateSchema = BaseIntent.extend({
   displayName: z.string().min(1).max(30),
   avatarId: z.string(),
   buyIn: z.number().int().positive().optional(),
+  gameType: z.enum(["blackjack", "poker"]).optional().default("blackjack"),
   config: PartialRoomConfigSchema.optional(),
 });
 
@@ -90,7 +91,7 @@ export const HostSetDealerSchema = BaseIntent.extend({
 export const HostAssignSeatSchema = BaseIntent.extend({
   type: z.literal("host:assignSeat"),
   targetId: z.string(),
-  seat: z.number().int().min(1).max(7).nullable(),
+  seat: z.number().int().min(1).max(9).nullable(),
 });
 export const HostKickSchema = BaseIntent.extend({
   type: z.literal("host:kick"),
@@ -123,12 +124,40 @@ export const HostApproveRebuySchema = BaseIntent.extend({
 
 export const SeatSitSchema = BaseIntent.extend({
   type: z.literal("seat:sit"),
-  seat: z.number().int().min(1).max(7),
+  seat: z.number().int().min(1).max(9),
 });
 export const SeatStandSchema = BaseIntent.extend({ type: z.literal("seat:stand") });
 export const RebuyRequestSchema = BaseIntent.extend({
   type: z.literal("rebuy:request"),
   amount: z.number().int().positive().optional(),
+});
+
+// ─── Poker ────────────────────────────────────────────────────────────────────
+
+export const PokerFoldSchema = BaseIntent.extend({ type: z.literal("poker:fold") });
+export const PokerCheckSchema = BaseIntent.extend({ type: z.literal("poker:check") });
+export const PokerCallSchema = BaseIntent.extend({ type: z.literal("poker:call") });
+export const PokerBetSchema = BaseIntent.extend({
+  type: z.literal("poker:bet"),
+  amount: z.number().int().positive(),
+});
+export const PokerRaiseSchema = BaseIntent.extend({
+  type: z.literal("poker:raise"),
+  to: z.number().int().positive().optional(),
+  amount: z.number().int().positive().optional(),
+});
+export const PokerAllInSchema = BaseIntent.extend({ type: z.literal("poker:allIn") });
+export const PokerShowCardsSchema = BaseIntent.extend({ type: z.literal("poker:showCards") });
+export const PokerDealNextStreetSchema = BaseIntent.extend({ type: z.literal("poker:dealNextStreet") });
+export const PokerNextHandSchema = BaseIntent.extend({ type: z.literal("poker:nextHand") });
+export const PokerStartHandSchema = BaseIntent.extend({ type: z.literal("poker:startHand") });
+export const PokerSitOutSchema = BaseIntent.extend({ type: z.literal("poker:sitOut") });
+export const PokerSitInSchema = BaseIntent.extend({ type: z.literal("poker:sitIn") });
+export const PokerActionSchema = BaseIntent.extend({
+  type: z.literal("poker:action"),
+  action: z.enum(["fold", "check", "call", "bet", "raise", "allIn"]),
+  amount: z.number().int().positive().optional(),
+  to: z.number().int().positive().optional(),
 });
 
 export const ClientIntentSchemas = {
@@ -166,6 +195,19 @@ export const ClientIntentSchemas = {
   "seat:sit": SeatSitSchema,
   "seat:stand": SeatStandSchema,
   "rebuy:request": RebuyRequestSchema,
+  "poker:fold": PokerFoldSchema,
+  "poker:check": PokerCheckSchema,
+  "poker:call": PokerCallSchema,
+  "poker:bet": PokerBetSchema,
+  "poker:raise": PokerRaiseSchema,
+  "poker:allIn": PokerAllInSchema,
+  "poker:showCards": PokerShowCardsSchema,
+  "poker:dealNextStreet": PokerDealNextStreetSchema,
+  "poker:nextHand": PokerNextHandSchema,
+  "poker:startHand": PokerStartHandSchema,
+  "poker:sitOut": PokerSitOutSchema,
+  "poker:sitIn": PokerSitInSchema,
+  "poker:action": PokerActionSchema,
 } as const;
 
 export type IntentType = keyof typeof ClientIntentSchemas;
@@ -203,3 +245,16 @@ export type HostApproveRebuyIntent = z.infer<typeof HostApproveRebuySchema>;
 export type SeatSitIntent = z.infer<typeof SeatSitSchema>;
 export type SeatStandIntent = z.infer<typeof SeatStandSchema>;
 export type RebuyRequestIntent = z.infer<typeof RebuyRequestSchema>;
+export type PokerFoldIntent = z.infer<typeof PokerFoldSchema>;
+export type PokerCheckIntent = z.infer<typeof PokerCheckSchema>;
+export type PokerCallIntent = z.infer<typeof PokerCallSchema>;
+export type PokerBetIntent = z.infer<typeof PokerBetSchema>;
+export type PokerRaiseIntent = z.infer<typeof PokerRaiseSchema>;
+export type PokerAllInIntent = z.infer<typeof PokerAllInSchema>;
+export type PokerShowCardsIntent = z.infer<typeof PokerShowCardsSchema>;
+export type PokerDealNextStreetIntent = z.infer<typeof PokerDealNextStreetSchema>;
+export type PokerNextHandIntent = z.infer<typeof PokerNextHandSchema>;
+export type PokerStartHandIntent = z.infer<typeof PokerStartHandSchema>;
+export type PokerSitOutIntent = z.infer<typeof PokerSitOutSchema>;
+export type PokerSitInIntent = z.infer<typeof PokerSitInSchema>;
+export type PokerActionIntent = z.infer<typeof PokerActionSchema>;

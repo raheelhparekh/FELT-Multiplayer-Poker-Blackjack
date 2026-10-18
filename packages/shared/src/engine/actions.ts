@@ -59,26 +59,4 @@ export interface ReducerResult {
   events: GameEvent[];
 }
 
-/** Error codes returned when an action is rejected. */
-export type EngineErrorCode =
-  | "WRONG_PHASE"
-  | "NOT_YOUR_TURN"
-  | "ILLEGAL_ACTION"
-  | "BANK_CANNOT_COVER"
-  | "INSUFFICIENT_FUNDS"
-  | "BET_TOO_LOW"
-  | "BET_TOO_HIGH"
-  | "MAX_SPLITS_REACHED"
-  | "CANNOT_SPLIT"
-  | "NOT_HOST"
-  | "NOT_DEALER";
-
-export class EngineError extends Error {
-  constructor(
-    public readonly code: EngineErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "EngineError";
-  }
-}
+export { type EngineErrorCode, EngineError } from "../errors.js";

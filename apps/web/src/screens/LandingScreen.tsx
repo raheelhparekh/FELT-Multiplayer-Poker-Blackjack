@@ -34,6 +34,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Table configuration state when creating a room
+  const [selectedGameType, setSelectedGameType] = useState<"blackjack" | "poker">("blackjack");
   const [showTableRules, setShowTableRules] = useState(false);
   const [decks, setDecks] = useState<1 | 2 | 4 | 6 | 8>(6);
   const [blackjackPayout, setBlackjackPayout] = useState<"3:2" | "6:5">("3:2");
@@ -41,6 +42,12 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
   const [doubleRestriction, setDoubleRestriction] = useState<"9-11" | "any">("9-11");
   const [minBet, setMinBet] = useState(50);
   const [maxBet, setMaxBet] = useState(1000);
+
+  // Poker configuration state
+  const [smallBlind, setSmallBlind] = useState(50);
+  const [bigBlind, setBigBlind] = useState(100);
+  const [actionTimer, setActionTimer] = useState(30);
+  const [maxSeats, setMaxSeats] = useState<6 | 9>(9);
 
   const [landingMode, setLandingMode] = useState<"join" | "create">("join");
 
@@ -75,18 +82,24 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
     clearError();
     setIsSubmitting(true);
     try {
-      const code = await createRoom(
-        undefined,
-        {
-          decks,
-          blackjackPayout,
-          dealerHitsSoft17,
-          doubleRestriction,
-          minBet,
-          maxBet,
-        },
-        buyIn,
-      );
+      const config =
+        selectedGameType === "poker"
+          ? {
+              smallBlind,
+              bigBlind,
+              actionTimer,
+              maxSeats,
+              startingStack: buyIn,
+            }
+          : {
+              decks,
+              blackjackPayout,
+              dealerHitsSoft17,
+              doubleRestriction,
+              minBet,
+              maxBet,
+            };
+      const code = await createRoom(undefined, config, buyIn, selectedGameType);
       navigate(`/r/${code}`);
     } catch {
       // Error handled by store
@@ -129,10 +142,13 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
           <div className="inline-flex items-center justify-center gap-2 mb-1">
             <span className="text-3xl text-gold-400">♠</span>
             <h1 className="text-3xl sm:text-4xl font-black tracking-widest text-white">FELT</h1>
-            <span className="text-3xl text-gold-400">♣</span>
+            <span className="text-3xl text-gold-400">🃏</span>
           </div>
-          <p className="text-xs sm:text-sm text-emerald-400 font-medium">
-            Real-time multiplayer blackjack for friends
+          <p className="text-xs sm:text-sm text-emerald-300 font-bold tracking-wide">
+            Real-Time Multiplayer Poker & Blackjack
+          </p>
+          <p className="text-[11px] text-emerald-500/80 font-mono">
+            Private Casino Card Room for Friends
           </p>
         </div>
 
@@ -149,6 +165,52 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
             </button>
           </div>
         )}
+
+        {/* Game Mode Tab: Texas Hold'em vs Blackjack */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] font-black uppercase tracking-wider text-gold-400 flex items-center gap-1.5">
+              <span>🎮</span>
+              <span>Select Game</span>
+            </span>
+            <span className="text-[10px] text-emerald-400 font-mono">
+              {selectedGameType === "poker" ? "Texas Hold'em (No Limit)" : "Casino Blackjack"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 p-1 bg-black/70 border border-emerald-700/80 rounded-2xl shadow-xl gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedGameType("poker");
+                if (buyIn === 1000) setBuyIn(2500);
+              }}
+              className={`py-3 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 ${
+                selectedGameType === "poker"
+                  ? "bg-gradient-to-r from-gold-400 to-amber-400 text-black shadow-lg scale-[1.02] border border-gold-300 ring-2 ring-gold-400/40"
+                  : "text-emerald-300/80 hover:text-white hover:bg-emerald-900/30"
+              }`}
+            >
+              <span className="text-lg">🃏</span>
+              <span>Texas Hold'em</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedGameType("blackjack");
+                if (buyIn === 2500) setBuyIn(1000);
+              }}
+              className={`py-3 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 ${
+                selectedGameType === "blackjack"
+                  ? "bg-gradient-to-r from-gold-400 to-amber-400 text-black shadow-lg scale-[1.02] border border-gold-300 ring-2 ring-gold-400/40"
+                  : "text-emerald-300/80 hover:text-white hover:bg-emerald-900/30"
+              }`}
+            >
+              <span className="text-lg">♠</span>
+              <span>Blackjack</span>
+            </button>
+          </div>
+        </div>
 
         {/* Profile Card: Name & Avatar */}
         <div className="space-y-3 bg-emerald-950/40 border border-emerald-900/60 rounded-2xl p-4">
@@ -203,7 +265,10 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1.5 mb-2">
-              {[1000, 5000, 10000, 20000].map((preset) => (
+              {(selectedGameType === "poker"
+                ? [1000, 2500, 5000, 10000]
+                : [1000, 5000, 10000, 20000]
+              ).map((preset) => (
                 <button
                   type="button"
                   key={preset}
@@ -245,7 +310,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
             }`}
           >
             <span>🔑</span>
-            <span>Join with Code</span>
+            <span>Join {selectedGameType === "poker" ? "Poker" : "Blackjack"}</span>
           </button>
           <button
             type="button"
@@ -256,7 +321,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                 : "text-emerald-300 hover:text-white"
             }`}
           >
-            <span>♠</span>
+            <span>{selectedGameType === "poker" ? "🃏" : "♠"}</span>
             <span>Create Table</span>
           </button>
         </div>
@@ -270,7 +335,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                 htmlFor="room-code-input"
                 className="block text-xs font-bold uppercase tracking-wider text-emerald-300"
               >
-                Enter Table Room Code
+                Enter {selectedGameType === "poker" ? "Poker" : "Blackjack"} Room Code
               </label>
               <div className="flex gap-2">
                 <input
@@ -293,7 +358,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                 </button>
               </div>
               <p className="text-[11px] text-emerald-400/80">
-                Ask the host for the 6-letter room code or join via invite link.
+                Ask the host for the 6-letter room code or join via private invite link.
               </p>
             </div>
 
@@ -308,13 +373,48 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
         ) : (
           /* 2. Create New Table Option */
           <div className="space-y-3.5 pt-1">
+            {/* Quick Stakes Presets for Poker */}
+            {selectedGameType === "poker" && (
+              <div className="space-y-1.5 bg-black/40 border border-emerald-800/40 p-2.5 rounded-xl">
+                <span className="text-[10px] text-emerald-300 block font-bold uppercase tracking-wider">
+                  Quick Blind Presets
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { name: "Micro", sb: 10, bb: 20 },
+                    { name: "Standard", sb: 25, bb: 50 },
+                    { name: "Deep", sb: 50, bb: 100 },
+                    { name: "High", sb: 100, bb: 200 },
+                  ].map((preset) => (
+                    <button
+                      type="button"
+                      key={preset.name}
+                      onClick={() => {
+                        setSmallBlind(preset.sb);
+                        setBigBlind(preset.bb);
+                      }}
+                      className={`py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                        smallBlind === preset.sb && bigBlind === preset.bb
+                          ? "bg-gold-400 text-black shadow-sm"
+                          : "bg-emerald-950/80 border border-emerald-800/40 text-emerald-300 hover:bg-emerald-900/40"
+                      }`}
+                    >
+                      ₹{preset.sb}/₹{preset.bb}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
               disabled={isSubmitting}
               onClick={handleCreate}
-              className="w-full min-h-[48px] py-3 rounded-2xl bg-gold-400 hover:bg-gold-300 active:scale-[0.98] text-black font-extrabold text-sm tracking-wide shadow-lg transition-all flex items-center justify-center gap-2"
+              className="w-full min-h-[48px] py-3 rounded-2xl bg-gradient-to-r from-gold-400 to-amber-400 hover:from-gold-300 hover:to-amber-300 active:scale-[0.98] text-black font-extrabold text-sm tracking-wide shadow-lg transition-all flex items-center justify-center gap-2"
             >
-              <span>Create New Table</span>
+              <span>
+                Create {selectedGameType === "poker" ? `Texas Hold'em (₹${smallBlind}/₹${bigBlind})` : "Blackjack"} Table
+              </span>
               <span className="text-base">→</span>
             </button>
 
@@ -328,8 +428,9 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                 <span className="flex items-center gap-1.5">
                   <span>⚙</span>
                   <span>
-                    Customize Rules ({decks} Decks • {dealerHitsSoft17 ? "H17" : "S17"} • ₹{minBet}
-                    -₹{maxBet})
+                    {selectedGameType === "poker"
+                      ? `Customize Rules (Blinds ₹${smallBlind}/₹${bigBlind} • ${actionTimer}s • ${maxSeats} Seats)`
+                      : `Customize Rules (${decks} Decks • ${dealerHitsSoft17 ? "H17" : "S17"} • ₹${minBet}-₹${maxBet})`}
                   </span>
                 </span>
                 <span>{showTableRules ? "▲" : "▼"}</span>
@@ -337,107 +438,173 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
 
               {showTableRules && (
                 <div className="mt-2.5 p-3.5 bg-black/60 border border-emerald-800/60 rounded-2xl space-y-3 animate-fade-in text-xs">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
-                        Decks
-                      </label>
-                      <select
-                        aria-label="Decks"
-                        value={decks}
-                        onChange={(e) =>
-                          setDecks(Number.parseInt(e.target.value, 10) as 1 | 2 | 4 | 6 | 8)
-                        }
-                        className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
-                      >
-                        {[1, 2, 4, 6, 8].map((d) => (
-                          <option key={d} value={d}>
-                            {d} {d === 1 ? "Deck" : "Decks"}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  {selectedGameType === "poker" ? (
+                    /* Poker Rules Form */
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Small Blind (₹)
+                        </label>
+                        <input
+                          type="number"
+                          value={smallBlind}
+                          min={5}
+                          max={bigBlind}
+                          onChange={(e) => setSmallBlind(Number.parseInt(e.target.value, 10) || 25)}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
-                        Blackjack Payout
-                      </label>
-                      <select
-                        aria-label="Blackjack Payout"
-                        value={blackjackPayout}
-                        onChange={(e) => setBlackjackPayout(e.target.value as "3:2" | "6:5")}
-                        className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
-                      >
-                        <option value="3:2">3:2 (Standard)</option>
-                        <option value="6:5">6:5</option>
-                      </select>
-                    </div>
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Big Blind (₹)
+                        </label>
+                        <input
+                          type="number"
+                          value={bigBlind}
+                          min={smallBlind}
+                          max={5000}
+                          onChange={(e) => setBigBlind(Number.parseInt(e.target.value, 10) || 50)}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
-                        Dealer Rule
-                      </label>
-                      <select
-                        aria-label="Dealer Rule"
-                        value={dealerHitsSoft17 ? "H17" : "S17"}
-                        onChange={(e) => setDealerHitsSoft17(e.target.value === "H17")}
-                        className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2 py-1.5 text-white text-xs"
-                      >
-                        <option value="S17">Stands on 17 (S17)</option>
-                        <option value="H17">Hits Soft 17 (H17)</option>
-                      </select>
-                    </div>
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Action Timer
+                        </label>
+                        <select
+                          aria-label="Action Timer"
+                          value={actionTimer}
+                          onChange={(e) => setActionTimer(Number.parseInt(e.target.value, 10))}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        >
+                          <option value={15}>15 Seconds</option>
+                          <option value={30}>30 Seconds</option>
+                          <option value={45}>45 Seconds</option>
+                          <option value={60}>60 Seconds</option>
+                        </select>
+                      </div>
 
-                    <div>
-                      <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
-                        Double Down
-                      </label>
-                      <select
-                        aria-label="Double Down"
-                        value={doubleRestriction}
-                        onChange={(e) => setDoubleRestriction(e.target.value as "9-11" | "any")}
-                        className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2 py-1.5 text-white text-xs"
-                      >
-                        <option value="9-11">Hard 9, 10, 11 only</option>
-                        <option value="any">Any initial 2 cards</option>
-                      </select>
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Table Capacity
+                        </label>
+                        <select
+                          aria-label="Table Capacity"
+                          value={maxSeats}
+                          onChange={(e) => setMaxSeats(Number.parseInt(e.target.value, 10) as 6 | 9)}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        >
+                          <option value={6}>6-Max</option>
+                          <option value={9}>9-Max (Full Ring)</option>
+                        </select>
+                      </div>
                     </div>
+                  ) : (
+                    /* Blackjack Rules Form */
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Decks
+                        </label>
+                        <select
+                          aria-label="Decks"
+                          value={decks}
+                          onChange={(e) =>
+                            setDecks(Number.parseInt(e.target.value, 10) as 1 | 2 | 4 | 6 | 8)
+                          }
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        >
+                          {[1, 2, 4, 6, 8].map((d) => (
+                            <option key={d} value={d}>
+                              {d} {d === 1 ? "Deck" : "Decks"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                    <div>
-                      <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
-                        Min Bet (₹)
-                      </label>
-                      <input
-                        type="number"
-                        value={minBet}
-                        min={10}
-                        max={maxBet}
-                        onChange={(e) => setMinBet(Number.parseInt(e.target.value, 10) || 50)}
-                        className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
-                      />
-                    </div>
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Blackjack Payout
+                        </label>
+                        <select
+                          aria-label="Blackjack Payout"
+                          value={blackjackPayout}
+                          onChange={(e) => setBlackjackPayout(e.target.value as "3:2" | "6:5")}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        >
+                          <option value="3:2">3:2 (Standard)</option>
+                          <option value="6:5">6:5</option>
+                        </select>
+                      </div>
 
-                    <div>
-                      <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
-                        Max Bet (Max ₹5,000)
-                      </label>
-                      <input
-                        type="number"
-                        value={maxBet}
-                        min={minBet}
-                        max={5000}
-                        onChange={(e) =>
-                          setMaxBet(
-                            Math.min(
-                              5000,
-                              Math.max(minBet, Number.parseInt(e.target.value, 10) || 1000),
-                            ),
-                          )
-                        }
-                        className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
-                      />
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Dealer Rule
+                        </label>
+                        <select
+                          aria-label="Dealer Rule"
+                          value={dealerHitsSoft17 ? "H17" : "S17"}
+                          onChange={(e) => setDealerHitsSoft17(e.target.value === "H17")}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2 py-1.5 text-white text-xs"
+                        >
+                          <option value="S17">Stands on 17 (S17)</option>
+                          <option value="H17">Hits Soft 17 (H17)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Double Down
+                        </label>
+                        <select
+                          aria-label="Double Down"
+                          value={doubleRestriction}
+                          onChange={(e) => setDoubleRestriction(e.target.value as "9-11" | "any")}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2 py-1.5 text-white text-xs"
+                        >
+                          <option value="9-11">Hard 9, 10, 11 only</option>
+                          <option value="any">Any initial 2 cards</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Min Bet (₹)
+                        </label>
+                        <input
+                          type="number"
+                          value={minBet}
+                          min={10}
+                          max={maxBet}
+                          onChange={(e) => setMinBet(Number.parseInt(e.target.value, 10) || 50)}
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Max Bet (Max ₹5,000)
+                        </label>
+                        <input
+                          type="number"
+                          value={maxBet}
+                          min={minBet}
+                          max={5000}
+                          onChange={(e) =>
+                            setMaxBet(
+                              Math.min(
+                                5000,
+                                Math.max(minBet, Number.parseInt(e.target.value, 10) || 1000),
+                              ),
+                            )
+                          }
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
