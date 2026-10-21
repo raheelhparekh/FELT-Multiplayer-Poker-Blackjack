@@ -285,4 +285,127 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     alice.disconnect();
     bob.disconnect();
   });
+
+  it("updates poker host settings and enforces poker validation rules", async () => {
+    const alice = new TestClient("Alice");
+    await alice.connect(serverUrl);
+
+    const { roomCode } = await alice.createRoom({
+      displayName: "Alice",
+      avatarId: "av-alice",
+      gameType: "poker",
+      buyIn: 1000,
+    });
+
+    // Verify initial default poker config
+    const initialSnap = alice.latestSnapshot as ClientPokerGameView;
+    expect(initialSnap.config.smallBlind).toBe(25);
+    expect(initialSnap.config.bigBlind).toBe(50);
+    expect(initialSnap.config.rebuyRequiresHostApproval).toBe(true);
+
+    // Host updates poker settings
+    await alice.updateConfig({
+      smallBlind: 50,
+      bigBlind: 100,
+      minBuyIn: 500,
+      maxBuyIn: 5000,
+      maxPlayerSeats: 8,
+      tableTheme: "royal-blue",
+      rebuyRequiresHostApproval: false,
+    });
+
+    const updatedSnap = (await alice.waitForSnapshot(
+      (s: any) => s.config?.smallBlind === 50 && s.config?.tableTheme === "royal-blue",
+    )) as ClientPokerGameView;
+
+    expect(updatedSnap.config.smallBlind).toBe(50);
+    expect(updatedSnap.config.bigBlind).toBe(100);
+    expect(updatedSnap.config.minBuyIn).toBe(500);
+    expect(updatedSnap.config.maxBuyIn).toBe(5000);
+    expect((updatedSnap.config as any).maxPlayerSeats).toBe(8);
+    expect(updatedSnap.config.rebuyRequiresHostApproval).toBe(false);
+
+    // Illegal config: smallBlind >= bigBlind
+    await expect(
+      alice.updateConfig({
+        smallBlind: 200,
+        bigBlind: 100,
+      }),
+    ).rejects.toThrow();
+
+    alice.disconnect();
+  });
+
+  it("enforces host control over buy-ins/rebuys with pending queue, decline and approve", async () => {
+    const alice = new TestClient("Alice");
+    const bob = new TestClient("Bob");
+
+    await alice.connect(serverUrl);
+    await bob.connect(serverUrl);
+
+    const { roomCode } = await alice.createRoom({
+      displayName: "Alice",
+      avatarId: "av-alice",
+      gameType: "poker",
+      buyIn: 1000,
+    });
+
+    await bob.joinRoom({ code: roomCode, displayName: "Bob", avatarId: "av-bob", buyIn: 1000 });
+    await alice.sit(1);
+    await bob.sit(2);
+
+    await alice.waitForSnapshot((s: any) => (s.players ?? []).length === 2);
+
+    // Check that host approval is required by default
+    const snap = alice.latestSnapshot as ClientPokerGameView;
+    expect(snap.config.rebuyRequiresHostApproval).toBe(true);
+
+    // Bob requests a rebuy of 500 chips
+    await bob.rebuyRequest(500);
+
+    // Wait for Alice (Host) to receive snapshot with pending chip_request
+    const hostSnapWithPending = await alice.waitForSnapshot((s: any) => {
+      return (s.transactions ?? []).some(
+        (tx: any) => tx.playerId === bob.playerId && tx.type === "chip_request" && tx.status === "pending",
+      );
+    });
+
+    // Bob's stack must NOT have increased yet!
+    expect(hostSnapWithPending.stacks[bob.playerId]).toBe(1000);
+
+    // Host declines the request
+    await alice.hostRejectRebuy(bob.playerId);
+
+    // Wait for transaction to become rejected
+    const hostSnapAfterReject = await alice.waitForSnapshot((s: any) => {
+      return (s.transactions ?? []).some(
+        (tx: any) => tx.playerId === bob.playerId && tx.type === "chip_request" && tx.status === "rejected",
+      );
+    });
+
+    // Bob's stack is still 1000
+    expect(hostSnapAfterReject.stacks[bob.playerId]).toBe(1000);
+
+    // Bob requests 1500 chips
+    await bob.rebuyRequest(1500);
+
+    await alice.waitForSnapshot((s: any) => {
+      return (s.transactions ?? []).some(
+        (tx: any) => tx.playerId === bob.playerId && tx.type === "chip_request" && tx.status === "pending",
+      );
+    });
+
+    // Host approves the request!
+    await alice.hostApproveRebuy(bob.playerId, 1500);
+
+    // Wait for Bob's stack to become 2500
+    const hostSnapAfterApprove = await alice.waitForSnapshot((s: any) => {
+      return s.stacks[bob.playerId] === 2500;
+    });
+
+    expect(hostSnapAfterApprove.stacks[bob.playerId]).toBe(2500);
+
+    alice.disconnect();
+    bob.disconnect();
+  });
 });

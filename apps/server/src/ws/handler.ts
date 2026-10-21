@@ -395,6 +395,22 @@ export function setupSocketIO(
       },
     );
 
+    socket.on(
+      "host:rejectRebuy",
+      (
+        data: { targetId: string; actionId?: string },
+        ack?: (res: unknown) => void,
+      ) => {
+        try {
+          const { room, playerId } = getRoomAndPlayer();
+          room.rejectRebuy(playerId, data.targetId);
+          if (ack) ack({ ok: true });
+        } catch (err) {
+          handleError(err, data?.actionId, ack);
+        }
+      },
+    );
+
     // ─── Host Recovery Controls ───────────────────────────────────────────────
 
     socket.on(

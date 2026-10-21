@@ -307,7 +307,7 @@ export class TestClient {
     return this.emitIntent("host:closeTable");
   }
 
-  public updateConfig(config: Partial<RoomConfig>): Promise<void> {
+  public updateConfig(config: Record<string, unknown>): Promise<void> {
     return this.emitIntent("host:updateConfig", { config });
   }
 
@@ -373,6 +373,10 @@ export class TestClient {
 
   public hostApproveRebuy(targetId: string, amount?: number): Promise<void> {
     return this.emitIntent("host:approveRebuy", { targetId, amount });
+  }
+
+  public hostRejectRebuy(targetId: string): Promise<void> {
+    return this.emitIntent("host:rejectRebuy", { targetId });
   }
 
   public sendChat(text: string): Promise<void> {

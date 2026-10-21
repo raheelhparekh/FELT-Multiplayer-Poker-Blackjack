@@ -16,6 +16,9 @@ export const BasePokerConfigSchema = z.object({
   spectatorsCanChat: z.boolean().default(true),
   maxSpectators: z.number().int().min(0).max(50).default(20),
   tableTheme: z.enum(TABLE_THEMES).default("classic-green"),
+  rebuyRequiresHostApproval: z.boolean().default(true),
+  rebuyAmount: z.number().int().min(100).max(20000).default(1000),
+  rebuyEnabled: z.boolean().default(true),
 });
 
 export const PartialPokerConfigSchema = BasePokerConfigSchema.partial();

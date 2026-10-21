@@ -7,6 +7,7 @@ export const NotificationToast: React.FC = () => {
   const currentView = useGameStore((s) => s.currentView);
   const myPlayerId = useGameStore((s) => s.myPlayerId);
   const hostApproveRebuy = useGameStore((s) => s.hostApproveRebuy);
+  const hostRejectRebuy = useGameStore((s) => s.hostRejectRebuy);
 
   const [approving, setApproving] = React.useState(false);
 
@@ -31,6 +32,13 @@ export const NotificationToast: React.FC = () => {
     if (notification.playerId) {
       setApproving(true);
       hostApproveRebuy(notification.playerId, notification.amount);
+      dismiss();
+    }
+  };
+
+  const handleDecline = () => {
+    if (notification.playerId) {
+      hostRejectRebuy(notification.playerId);
       dismiss();
     }
   };
@@ -134,6 +142,21 @@ export const NotificationToast: React.FC = () => {
             }}
           >
             Ignore
+          </button>
+          <button
+            type="button"
+            onClick={handleDecline}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "6px",
+              backgroundColor: "rgba(239, 68, 68, 0.15)",
+              color: "#f87171",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              fontSize: "12px",
+              cursor: "pointer",
+            }}
+          >
+            Decline
           </button>
           <button
             type="button"

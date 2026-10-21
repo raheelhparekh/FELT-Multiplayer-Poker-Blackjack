@@ -119,6 +119,11 @@ export const HostApproveRebuySchema = BaseIntent.extend({
   type: z.literal("host:approveRebuy"),
   targetId: z.string(),
 });
+export const HostRejectRebuySchema = BaseIntent.extend({
+  type: z.literal("host:rejectRebuy"),
+  targetId: z.string(),
+});
+
 
 // ─── Seat / Rebuy ─────────────────────────────────────────────────────────────
 
@@ -192,6 +197,7 @@ export const ClientIntentSchemas = {
   "host:endSession": HostEndSessionSchema,
   "host:transferHost": HostTransferHostSchema,
   "host:approveRebuy": HostApproveRebuySchema,
+  "host:rejectRebuy": HostRejectRebuySchema,
   "seat:sit": SeatSitSchema,
   "seat:stand": SeatStandSchema,
   "rebuy:request": RebuyRequestSchema,
@@ -242,6 +248,7 @@ export type HostResumeIntent = z.infer<typeof HostResumeSchema>;
 export type HostEndSessionIntent = z.infer<typeof HostEndSessionSchema>;
 export type HostTransferHostIntent = z.infer<typeof HostTransferHostSchema>;
 export type HostApproveRebuyIntent = z.infer<typeof HostApproveRebuySchema>;
+export type HostRejectRebuyIntent = z.infer<typeof HostRejectRebuySchema>;
 export type SeatSitIntent = z.infer<typeof SeatSitSchema>;
 export type SeatStandIntent = z.infer<typeof SeatStandSchema>;
 export type RebuyRequestIntent = z.infer<typeof RebuyRequestSchema>;

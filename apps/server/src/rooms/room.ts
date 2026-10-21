@@ -18,6 +18,8 @@ import {
   CHAT,
   EngineError,
   PartialRoomConfigSchema,
+  PartialPokerConfigSchema,
+  type PokerConfig,
   ROOM,
   TIMING,
   createInitialState,
@@ -238,9 +240,19 @@ export class Room {
     this.playerTokens.set(playerId, token);
 
     // Sync participant to engine state bankrolls (with custom buyIn if supplied; capped at 20,000 max)
-    const MAX_STARTING_BUY_IN = 20000;
-    const rawBuyIn = params.buyIn && params.buyIn > 0 ? params.buyIn : this.config.startingStack;
-    const initialStack = Math.min(MAX_STARTING_BUY_IN, Math.max(100, rawBuyIn));
+    let initialStack: number;
+    if (this.gameType === "poker") {
+      const pokerCfg = this.config as unknown as PokerConfig;
+      const minBuyIn = pokerCfg.minBuyIn ?? 200;
+      const maxBuyIn = pokerCfg.maxBuyIn ?? 20000;
+      const rawBuyIn =
+        params.buyIn && params.buyIn > 0 ? params.buyIn : (this.config.startingStack ?? minBuyIn);
+      initialStack = Math.min(maxBuyIn, Math.max(minBuyIn, rawBuyIn));
+    } else {
+      const MAX_STARTING_BUY_IN = 20000;
+      const rawBuyIn = params.buyIn && params.buyIn > 0 ? params.buyIn : this.config.startingStack;
+      initialStack = Math.min(MAX_STARTING_BUY_IN, Math.max(100, rawBuyIn));
+    }
     const stacks = new Map(this.state.stacks);
     const totalBuyIns = new Map(this.state.totalBuyIns);
     const initialBuyIns = new Map(this.state.initialBuyIns);
@@ -877,28 +889,117 @@ export class Room {
     this.broadcastSnapshot();
   }
 
-  public updateConfig(hostId: string, partialConfig: Partial<RoomConfig>): void {
+  public updateConfig(
+    hostId: string,
+    partialConfig: Partial<RoomConfig> | Partial<PokerConfig>,
+  ): void {
     this.assertHost(hostId);
 
-    // Enforce 5,000 max bet cap and 20,000 chip caps
-    if (partialConfig.maxBet !== undefined) {
-      partialConfig.maxBet = Math.min(5000, Math.max(1, partialConfig.maxBet));
-    }
-    if (partialConfig.startingStack !== undefined) {
-      partialConfig.startingStack = Math.min(20000, Math.max(100, partialConfig.startingStack));
-    }
-    if (partialConfig.rebuyAmount !== undefined) {
-      partialConfig.rebuyAmount = Math.min(20000, Math.max(100, partialConfig.rebuyAmount));
+    if (this.gameType === "poker") {
+      const result = PartialPokerConfigSchema.safeParse(partialConfig);
+      if (!result.success) {
+        throw new EngineError("ILLEGAL_ACTION", `Invalid poker config: ${result.error.message}`);
+      }
+
+      const currentPokerConfig = this.config as unknown as PokerConfig;
+      const smallBlind = result.data.smallBlind ?? currentPokerConfig.smallBlind;
+      const bigBlind = result.data.bigBlind ?? currentPokerConfig.bigBlind;
+      const minBuyIn = result.data.minBuyIn ?? currentPokerConfig.minBuyIn;
+      const maxBuyIn = result.data.maxBuyIn ?? currentPokerConfig.maxBuyIn;
+
+      if (smallBlind >= bigBlind) {
+        throw new EngineError("ILLEGAL_ACTION", "Small blind must be strictly less than big blind");
+      }
+      if (minBuyIn > maxBuyIn) {
+        throw new EngineError("ILLEGAL_ACTION", "Min buy-in must be less than or equal to max buy-in");
+      }
+
+      const pCfg = result.data;
+      const changes: string[] = [];
+      if (pCfg.tableTheme && pCfg.tableTheme !== currentPokerConfig.tableTheme) {
+        const themeNames: Record<string, string> = {
+          "classic-green": "Monte Carlo Emerald",
+          "royal-blue": "Bellagio Sapphire Blue",
+          "ruby-red": "Caesars Crimson Red",
+          "midnight-onyx": "Venetian Noir",
+          "imperial-purple": "Crown Velvet Amethyst",
+        };
+        changes.push(
+          `Table felt changed to ${themeNames[pCfg.tableTheme] ?? pCfg.tableTheme}`,
+        );
+      }
+      if (
+        (pCfg.smallBlind !== undefined && pCfg.smallBlind !== currentPokerConfig.smallBlind) ||
+        (pCfg.bigBlind !== undefined && pCfg.bigBlind !== currentPokerConfig.bigBlind)
+      ) {
+        changes.push(`Blinds set to ₹${smallBlind}/₹${bigBlind}`);
+      }
+      if (
+        (pCfg.minBuyIn !== undefined && pCfg.minBuyIn !== currentPokerConfig.minBuyIn) ||
+        (pCfg.maxBuyIn !== undefined && pCfg.maxBuyIn !== currentPokerConfig.maxBuyIn)
+      ) {
+        changes.push(`Buy-in set to ₹${minBuyIn.toLocaleString()} - ₹${maxBuyIn.toLocaleString()}`);
+      }
+      if (pCfg.actionTimerSec !== undefined && pCfg.actionTimerSec !== currentPokerConfig.actionTimerSec) {
+        changes.push(`Action Timer set to ${pCfg.actionTimerSec}s`);
+      }
+      if (pCfg.timeBankSec !== undefined && pCfg.timeBankSec !== currentPokerConfig.timeBankSec) {
+        changes.push(`Time Bank set to ${pCfg.timeBankSec}s`);
+      }
+      if (pCfg.autoNextHandDelaySec !== undefined && pCfg.autoNextHandDelaySec !== currentPokerConfig.autoNextHandDelaySec) {
+        changes.push(`Next hand delay set to ${pCfg.autoNextHandDelaySec}s`);
+      }
+      if (pCfg.maxPlayerSeats !== undefined && pCfg.maxPlayerSeats !== currentPokerConfig.maxPlayerSeats) {
+        changes.push(`Max Seats set to ${pCfg.maxPlayerSeats}`);
+      }
+      if (pCfg.rebuyRequiresHostApproval !== undefined && pCfg.rebuyRequiresHostApproval !== currentPokerConfig.rebuyRequiresHostApproval) {
+        changes.push(`Buy-in host approval ${pCfg.rebuyRequiresHostApproval ? "enabled" : "disabled"}`);
+      }
+      if (pCfg.rebuyAmount !== undefined && pCfg.rebuyAmount !== currentPokerConfig.rebuyAmount) {
+        changes.push(`Rebuy Amount set to ₹${pCfg.rebuyAmount.toLocaleString()}`);
+      }
+
+      if (changes.length > 0) {
+        const announcement = `Host updated table settings: ${changes.join("; ")}`;
+        this.addActivity(announcement);
+        this.addSystemChatMessage(announcement);
+        this.broadcastTableNotification({
+          id: randomUUID(),
+          type: "info",
+          message: announcement,
+          timestamp: Date.now(),
+        });
+      }
+
+      this.config = { ...this.config, ...result.data } as any;
+      this.dispatchEngineAction({
+        type: "host:updateConfig",
+        config: result.data as any,
+      });
+      this.broadcastSnapshot();
+      return;
     }
 
-    const result = PartialRoomConfigSchema.safeParse(partialConfig);
+    const bjConfig = partialConfig as Partial<RoomConfig>;
+    // Enforce 5,000 max bet cap and 20,000 chip caps
+    if (bjConfig.maxBet !== undefined) {
+      bjConfig.maxBet = Math.min(5000, Math.max(1, bjConfig.maxBet));
+    }
+    if (bjConfig.startingStack !== undefined) {
+      bjConfig.startingStack = Math.min(20000, Math.max(100, bjConfig.startingStack));
+    }
+    if (bjConfig.rebuyAmount !== undefined) {
+      bjConfig.rebuyAmount = Math.min(20000, Math.max(100, bjConfig.rebuyAmount));
+    }
+
+    const result = PartialRoomConfigSchema.safeParse(bjConfig);
     if (!result.success) {
       throw new EngineError("ILLEGAL_ACTION", `Invalid config: ${result.error.message}`);
     }
 
     // Identify what changed to inform players
     const changes: string[] = [];
-    if (partialConfig.tableTheme && partialConfig.tableTheme !== this.config.tableTheme) {
+    if (bjConfig.tableTheme && bjConfig.tableTheme !== this.config.tableTheme) {
       const themeNames: Record<string, string> = {
         "classic-green": "Monte Carlo Emerald",
         "royal-blue": "Bellagio Sapphire Blue",
@@ -907,49 +1008,57 @@ export class Room {
         "imperial-purple": "Crown Velvet Amethyst",
       };
       changes.push(
-        `Table felt changed to ${themeNames[partialConfig.tableTheme] ?? partialConfig.tableTheme}`,
+        `Table felt changed to ${themeNames[bjConfig.tableTheme] ?? bjConfig.tableTheme}`,
       );
     }
-    if (partialConfig.decks !== undefined && partialConfig.decks !== this.config.decks) {
-      changes.push(`Decks changed to ${partialConfig.decks}`);
+    if (bjConfig.decks !== undefined && bjConfig.decks !== this.config.decks) {
+      changes.push(`Decks changed to ${bjConfig.decks}`);
     }
-    if (partialConfig.maxBet !== undefined && partialConfig.maxBet !== this.config.maxBet) {
-      changes.push(`Max Bet set to ₹${partialConfig.maxBet.toLocaleString()}`);
+    if (bjConfig.maxBet !== undefined && bjConfig.maxBet !== this.config.maxBet) {
+      changes.push(`Max Bet set to ₹${bjConfig.maxBet.toLocaleString()}`);
     }
-    if (partialConfig.minBet !== undefined && partialConfig.minBet !== this.config.minBet) {
-      changes.push(`Min Bet set to ₹${partialConfig.minBet.toLocaleString()}`);
+    if (bjConfig.minBet !== undefined && bjConfig.minBet !== this.config.minBet) {
+      changes.push(`Min Bet set to ₹${bjConfig.minBet.toLocaleString()}`);
     }
     if (
-      partialConfig.startingStack !== undefined &&
-      partialConfig.startingStack !== this.config.startingStack
+      bjConfig.startingStack !== undefined &&
+      bjConfig.startingStack !== this.config.startingStack
     ) {
-      changes.push(`Starting Stack set to ₹${partialConfig.startingStack.toLocaleString()}`);
+      changes.push(`Starting Stack set to ₹${bjConfig.startingStack.toLocaleString()}`);
     }
     if (
-      partialConfig.rebuyAmount !== undefined &&
-      partialConfig.rebuyAmount !== this.config.rebuyAmount
+      bjConfig.rebuyAmount !== undefined &&
+      bjConfig.rebuyAmount !== this.config.rebuyAmount
     ) {
-      changes.push(`Rebuy Amount set to ₹${partialConfig.rebuyAmount.toLocaleString()}`);
+      changes.push(`Rebuy Amount set to ₹${bjConfig.rebuyAmount.toLocaleString()}`);
     }
     if (
-      partialConfig.dealerHitsSoft17 !== undefined &&
-      partialConfig.dealerHitsSoft17 !== this.config.dealerHitsSoft17
+      bjConfig.rebuyRequiresHostApproval !== undefined &&
+      bjConfig.rebuyRequiresHostApproval !== this.config.rebuyRequiresHostApproval
     ) {
       changes.push(
-        `Dealer Rule set to ${partialConfig.dealerHitsSoft17 ? "Hits Soft 17 (H17)" : "Stands on 17 (S17)"}`,
+        `Rebuy host approval ${bjConfig.rebuyRequiresHostApproval ? "enabled" : "disabled"}`,
       );
     }
     if (
-      partialConfig.blackjackPayout !== undefined &&
-      partialConfig.blackjackPayout !== this.config.blackjackPayout
+      bjConfig.dealerHitsSoft17 !== undefined &&
+      bjConfig.dealerHitsSoft17 !== this.config.dealerHitsSoft17
     ) {
-      changes.push(`Blackjack Payout set to ${partialConfig.blackjackPayout}`);
+      changes.push(
+        `Dealer Rule set to ${bjConfig.dealerHitsSoft17 ? "Hits Soft 17 (H17)" : "Stands on 17 (S17)"}`,
+      );
     }
     if (
-      partialConfig.actionTimerSec !== undefined &&
-      partialConfig.actionTimerSec !== this.config.actionTimerSec
+      bjConfig.blackjackPayout !== undefined &&
+      bjConfig.blackjackPayout !== this.config.blackjackPayout
     ) {
-      changes.push(`Action Timer set to ${partialConfig.actionTimerSec}s`);
+      changes.push(`Blackjack Payout set to ${bjConfig.blackjackPayout}`);
+    }
+    if (
+      bjConfig.actionTimerSec !== undefined &&
+      bjConfig.actionTimerSec !== this.config.actionTimerSec
+    ) {
+      changes.push(`Action Timer set to ${bjConfig.actionTimerSec}s`);
     }
 
     if (changes.length > 0) {
@@ -964,10 +1073,12 @@ export class Room {
       });
     }
 
+    this.config = { ...this.config, ...result.data } as any;
     this.dispatchEngineAction({
       type: "host:updateConfig",
       config: partialConfig,
     });
+    this.broadcastSnapshot();
   }
 
   // ─── Safe chip-affecting phases check ─────────────────────────────────────
@@ -1185,6 +1296,37 @@ export class Room {
     this.broadcastTableNotification(notif);
   }
 
+  public rejectRebuy(rejectorId: string, targetId: string): void {
+    if (rejectorId !== this.hostId && rejectorId !== this.dealerId) {
+      throw new EngineError("NOT_HOST", "Only the host or dealer can reject chip requests");
+    }
+
+    const pendingTx = this.transactions.find(
+      (tx) => tx.playerId === targetId && tx.type === "chip_request" && tx.status === "pending",
+    );
+
+    if (!pendingTx) {
+      return;
+    }
+
+    pendingTx.status = "rejected";
+    const target = this.participants.get(targetId);
+    const name = target ? target.displayName : targetId;
+
+    this.addActivity(`Host rejected chip request for ${name}`);
+
+    const notif: TableNotification = {
+      id: randomUUID(),
+      type: "info",
+      playerId: targetId,
+      playerName: name,
+      message: `Chip request of ₹${pendingTx.amount.toLocaleString()} was declined by host`,
+      timestamp: Date.now(),
+    };
+    this.broadcastTableNotification(notif);
+    this.broadcastSnapshot();
+  }
+
   /** Apply all queued chip actions (called at round_summary or next betting phase). */
   private applyQueuedChipActions(): void {
     if (this.queuedChipActions.length === 0) return;
@@ -1381,6 +1523,22 @@ export class Room {
   public forceStandActiveHand(hostId: string): void {
     this.assertHost(hostId);
 
+    if (this.gameType === "poker") {
+      const pokerState = this.state as any;
+      if (pokerState.phase !== "betting" || !pokerState.toActPlayerId) {
+        throw new EngineError("WRONG_PHASE", "No active turn to advance");
+      }
+      const targetId = pokerState.toActPlayerId;
+      const p = this.participants.get(targetId);
+      const name = p?.displayName ?? targetId;
+      this.addActivity(`[Host Recovery] Force-advancing turn for ${name}`);
+      const action = this.gameModule.onTimeout?.(this.state, targetId);
+      if (action) {
+        this.dispatchEngineAction(action);
+      }
+      return;
+    }
+
     if (this.state.phase !== "player_turns" || !this.state.activeHandId) {
       throw new EngineError("WRONG_PHASE", "No active hand to force stand");
     }
@@ -1418,6 +1576,51 @@ export class Room {
    */
   public cancelRoundRefund(hostId: string): void {
     this.assertHost(hostId);
+
+    if (this.gameType === "poker") {
+      const pokerState = this.state as any;
+      if (pokerState.phase === "lobby") {
+        throw new EngineError("WRONG_PHASE", "No hand in progress to cancel");
+      }
+      this._clearGameTimers();
+      const stacks = new Map(this.state.stacks);
+      const players = new Map<string, any>(pokerState.players || []);
+      for (const [pid, p] of players.entries()) {
+        const player = { ...(p as object) } as any;
+        const refund = (player.committedThisHand || 0) + (player.committedThisRound || 0);
+        if (refund > 0) {
+          stacks.set(pid, (stacks.get(pid) ?? 0) + refund);
+          player.stack = (player.stack ?? 0) + refund;
+          player.committedThisHand = 0;
+          player.committedThisRound = 0;
+        }
+        player.holeCards = [];
+        player.hasFolded = false;
+        player.isAllIn = false;
+        player.actedThisRound = false;
+        player.hasSeenCards = false;
+        players.set(pid, player);
+      }
+
+      this.state = {
+        ...this.state,
+        stacks,
+        players,
+        phase: "hand_summary",
+        street: null,
+        communityCards: [],
+        pots: [],
+        currentBet: 0,
+        toActPlayerId: null,
+        winners: null,
+        actionDeadline: null,
+        tableStatusMessage: "Hand cancelled by host — all bets refunded",
+      } as any;
+
+      this.addActivity("[Host Recovery] Hand cancelled by host — all bets refunded");
+      this.broadcastSnapshot();
+      return;
+    }
 
     const phase = this.state.phase;
     const allowedPhases: GamePhase[] = [
@@ -1744,7 +1947,9 @@ export class Room {
         const rawReq = action.amount && action.amount > 0 ? action.amount : this.config.rebuyAmount;
         const reqAmount = Math.min(MAX_CHIP_REQUEST, Math.max(100, rawReq));
         const currentStack = this.state.stacks.get(playerId) ?? 0;
-        if (this.config.rebuyRequiresHostApproval) {
+        const roundNum = (this.state as any).handNumber ?? this.state.roundNumber ?? 0;
+        const requiresApproval = this.config.rebuyRequiresHostApproval !== false;
+        if (requiresApproval) {
           // Check if there is already a pending request for this player
           const existingPending = this.transactions.find(
             (tx) =>
@@ -1756,7 +1961,7 @@ export class Room {
           } else {
             this.addTransaction({
               id: randomUUID(),
-              roundNumber: this.state.roundNumber,
+              roundNumber: roundNum,
               playerId,
               displayName: name,
               type: "chip_request",

@@ -100,6 +100,7 @@ export interface GameStoreState {
   // Rebuy
   rebuyRequest: (amount?: number) => void;
   hostApproveRebuy: (targetId: string, amount?: number) => void;
+  hostRejectRebuy: (targetId: string) => void;
 
   // Chat
   sendChat: (text: string) => void;
@@ -578,6 +579,11 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     hostApproveRebuy: (targetId: string, amount?: number) => {
       const socket = ensureSocket();
       socket.emit("host:approveRebuy", { targetId, amount });
+    },
+
+    hostRejectRebuy: (targetId: string) => {
+      const socket = ensureSocket();
+      socket.emit("host:rejectRebuy", { targetId });
     },
 
     // Poker actions

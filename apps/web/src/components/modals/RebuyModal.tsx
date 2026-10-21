@@ -9,14 +9,31 @@ export const RebuyModal: React.FC = () => {
   const myPlayerId = useGameStore((s) => s.myPlayerId);
   const rebuyRequest = useGameStore((s) => s.rebuyRequest);
 
+  const isPoker = currentView?.gameType === "poker";
+  const pokerCfg = currentView?.config as any;
+  const minAllowed = isPoker ? (pokerCfg?.minBuyIn ?? 100) : 100;
+  const maxAllowed = isPoker ? (pokerCfg?.maxBuyIn ?? 20000) : 20000;
+  const initialAmount = isPoker
+    ? (pokerCfg?.rebuyAmount ?? pokerCfg?.minBuyIn ?? 1000)
+    : (currentView?.config.startingStack || 1000);
+
   const [requested, setRequested] = useState(false);
-  const [amount, setAmount] = useState<number>(currentView?.config.startingStack || 1000);
+  const [amount, setAmount] = useState<number>(initialAmount);
 
   if (activeModal !== "rebuy" || !currentView) {
     return null;
   }
 
   const stack = myPlayerId ? (currentView.stacks[myPlayerId] ?? 0) : 0;
+
+  const presets = isPoker
+    ? [
+        minAllowed,
+        Math.min(maxAllowed, Math.max(minAllowed, 500)),
+        Math.min(maxAllowed, Math.max(minAllowed, 1000)),
+        maxAllowed,
+      ].filter((v, idx, arr) => arr.indexOf(v) === idx)
+    : [1000, 5000, 10000, 20000];
 
   const handleRequest = () => {
     rebuyRequest(amount);
@@ -35,7 +52,9 @@ export const RebuyModal: React.FC = () => {
         </div>
 
         <div>
-          <h2 className="text-lg font-bold text-white">Request More Chips</h2>
+          <h2 className="text-lg font-bold text-white">
+            {isPoker ? "Buy-In / Request Chips" : "Request More Chips"}
+          </h2>
           <p className="text-xs text-emerald-400/80 mt-1">
             Current Stack:{" "}
             <span className="font-bold text-white font-mono">₹{stack.toLocaleString()}</span>
@@ -48,11 +67,11 @@ export const RebuyModal: React.FC = () => {
               Select Amount
             </label>
             <span className="text-[10px] text-amber-300 font-semibold font-mono">
-              Max ₹20,000 / request
+              Limit: ₹{minAllowed.toLocaleString()} - ₹{maxAllowed.toLocaleString()}
             </span>
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            {[1000, 5000, 10000, 20000].map((preset) => (
+            {presets.map((preset) => (
               <button
                 type="button"
                 key={preset}
@@ -69,21 +88,25 @@ export const RebuyModal: React.FC = () => {
           </div>
           <input
             type="number"
-            min={100}
-            max={20000}
-            step={100}
+            min={minAllowed}
+            max={maxAllowed}
+            step={50}
             value={amount}
             onChange={(e) =>
-              setAmount(Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)))
+              setAmount(
+                Math.min(
+                  maxAllowed,
+                  Math.max(minAllowed, Number.parseInt(e.target.value, 10) || minAllowed),
+                ),
+              )
             }
             className="w-full bg-black/50 border border-emerald-700/60 focus:border-gold-400 rounded-xl px-3.5 py-2 text-sm font-mono font-semibold text-white placeholder-emerald-600 focus:outline-none transition-colors"
-            placeholder="Custom amount (max ₹20,000)"
+            placeholder={`Custom amount (₹${minAllowed} - ₹${maxAllowed})`}
           />
         </div>
 
         <div className="bg-emerald-950/60 border border-emerald-900/60 rounded-xl p-3 text-xs text-emerald-300">
-          Dealer and table host will receive an approval alert. Limits are capped at ₹20,000 per
-          request.
+          Table host will receive an approval request to approve or decline chips.
         </div>
 
         <div className="flex gap-2 pt-2">
@@ -96,7 +119,7 @@ export const RebuyModal: React.FC = () => {
           </button>
           <button
             type="button"
-            disabled={requested || amount <= 0 || amount > 20000}
+            disabled={requested || amount < minAllowed || amount > maxAllowed}
             onClick={handleRequest}
             className="flex-1 py-2.5 rounded-xl bg-gold-400 hover:bg-gold-300 disabled:opacity-40 text-black font-bold text-xs shadow-lg transition-transform active:scale-95"
           >

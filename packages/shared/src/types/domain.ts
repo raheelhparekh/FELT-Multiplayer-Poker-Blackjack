@@ -136,7 +136,7 @@ export interface PlayerTransaction {
     "buy_in" | "rebuy" | "chip_request" | "round_win" | "round_loss" | "round_push" | "adjustment";
   amount: number;
   balanceAfter: number;
-  status?: "pending" | "approved" | "completed" | undefined;
+  status?: "pending" | "approved" | "completed" | "rejected" | undefined;
   details?: string;
   timestamp: number;
 }
