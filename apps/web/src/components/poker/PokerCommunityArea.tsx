@@ -27,16 +27,16 @@ export const PokerCommunityArea: React.FC<PokerCommunityAreaProps> = ({
   return (
     <div className="flex flex-col items-center justify-center space-y-3 z-10 select-none">
       {/* Street & Pot Header */}
-      <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md px-4 py-1.5 rounded-full border border-gold-400/40 shadow-xl">
+      <div className="flex items-center gap-2 sm:gap-3 bg-black/60 backdrop-blur-md px-3 py-1 sm:px-4 sm:py-1.5 rounded-full border border-gold-400/40 shadow-xl">
         {street && (
           <span className="text-[10px] font-black tracking-widest uppercase text-gold-300 bg-gold-500/20 px-2 py-0.5 rounded-full border border-gold-400/30">
             {street}
           </span>
         )}
-        <div className="flex items-center gap-1.5">
-          <ChipView amount={100} size="sm" />
-          <span className="text-xs font-semibold text-emerald-300">Pot:</span>
-          <span className="text-sm font-black font-mono text-gold-300">
+        <div className="flex items-center gap-1 sm:gap-1.5">
+          <ChipView amount={totalPot > 0 ? totalPot : 100} size="xs" />
+          <span className="text-[11px] sm:text-xs font-semibold text-emerald-300">Pot:</span>
+          <span className="text-xs sm:text-sm font-black font-mono text-gold-300">
             ₹{totalPot.toLocaleString()}
           </span>
         </div>
@@ -55,7 +55,7 @@ export const PokerCommunityArea: React.FC<PokerCommunityAreaProps> = ({
       </div>
 
       {/* Community Cards Slots */}
-      <div className="flex items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 bg-emerald-950/40 border border-emerald-800/40 rounded-2xl shadow-inner min-h-[72px] sm:min-h-[100px]">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 p-1.5 sm:p-2 bg-emerald-950/40 border border-emerald-800/40 rounded-2xl shadow-inner min-h-[64px] sm:min-h-[96px]">
         <AnimatePresence>
           {communityCards.map((card, idx) => (
             <motion.div
@@ -72,7 +72,8 @@ export const PokerCommunityArea: React.FC<PokerCommunityAreaProps> = ({
             >
               <CardView
                 cardSlot={{ hidden: false, card }}
-                className="!w-10 !h-15 sm:!w-14 sm:!h-20 text-[10px] sm:text-xs"
+                isSmall={true}
+                className="!w-10 !h-14 sm:!w-14 sm:!h-20 aspect-[5/7] text-[10px] sm:text-xs shrink-0"
               />
             </motion.div>
           ))}
@@ -82,7 +83,7 @@ export const PokerCommunityArea: React.FC<PokerCommunityAreaProps> = ({
         {Array.from({ length: emptySlotsCount }).map((_, idx) => (
           <div
             key={`empty-slot-${idx}`}
-            className="w-10 h-15 sm:w-14 sm:h-20 rounded-md sm:rounded-lg border-2 border-dashed border-emerald-800/40 bg-black/20 flex items-center justify-center opacity-40"
+            className="w-10 h-14 sm:w-14 sm:h-20 aspect-[5/7] rounded-md sm:rounded-lg border-2 border-dashed border-emerald-800/40 bg-black/20 flex items-center justify-center opacity-40 shrink-0"
           >
             <span className="text-emerald-700/60 font-serif text-xs sm:text-sm">♦</span>
           </div>

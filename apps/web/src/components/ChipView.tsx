@@ -3,7 +3,7 @@ import type React from "react";
 
 export interface ChipViewProps {
   amount: number;
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
   onClick?: () => void;
   selected?: boolean;
   className?: string;
@@ -66,7 +66,8 @@ export const ChipView: React.FC<ChipViewProps> = ({
   };
 
   const sizeClasses = {
-    sm: "w-7 h-7 text-[10px] border",
+    xs: "w-4 h-4 sm:w-5 sm:h-5 text-[7px] sm:text-[8px] border",
+    sm: "w-5 h-5 sm:w-6 sm:h-6 text-[8px] sm:text-[9px] border",
     md: "w-11 h-11 sm:w-12 sm:h-12 text-xs border-2",
     lg: "w-14 h-14 sm:w-16 sm:h-16 text-sm border-2",
   }[size];
@@ -77,18 +78,26 @@ export const ChipView: React.FC<ChipViewProps> = ({
       whileHover={{ scale: 1.06 }}
       whileTap={{ scale: 0.95 }}
       onClick={onClick}
-      className={`relative rounded-full rounded-full shadow-lg flex items-center justify-center font-black select-none bg-gradient-to-br ${style.bg} ${style.border} ${style.text} ${sizeClasses} ${
+      className={`relative rounded-full shadow-md flex items-center justify-center font-black select-none shrink-0 bg-gradient-to-br ${style.bg} ${style.border} ${style.text} ${sizeClasses} ${
         selected ? "ring-2 ring-gold-300 ring-offset-2 ring-offset-black scale-105" : ""
       } ${className}`}
     >
       {/* Dashed edge casino inserts */}
-      <div className="absolute inset-0 rounded-full border-2 border-dashed border-white/25 pointer-events-none" />
+      <div
+        className={`absolute inset-0 rounded-full border-dashed border-white/25 pointer-events-none ${
+          size === "xs" || size === "sm" ? "border-[0.5px]" : "border-2"
+        }`}
+      />
 
       {/* Inner Inset Ring */}
       <div
         className={`w-3/4 h-3/4 rounded-full border ${style.ring} flex items-center justify-center shadow-inner bg-black/20`}
       >
-        <span>{amount >= 1000 ? `${amount / 1000}k` : amount}</span>
+        <span>
+          {amount >= 1000
+            ? `${amount % 1000 === 0 ? amount / 1000 : (amount / 1000).toFixed(1)}k`
+            : amount}
+        </span>
       </div>
     </motion.button>
   );

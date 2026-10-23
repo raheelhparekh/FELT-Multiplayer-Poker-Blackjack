@@ -79,16 +79,18 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
   }, [isTurn, actionDeadline]);
 
   // Directional chip classes ensuring bet chips float inwards toward table center / pot
-  const getChipPosClass = (dir: ChipDirection) => {
+  const getChipPosClass = (dir: ChipDirection, hasCards = false) => {
     switch (dir) {
       case "top":
-        return "-top-5 sm:-top-6 left-1/2 -translate-x-1/2";
+        return hasCards
+          ? "-top-6 sm:-top-7 left-1/2 -translate-x-1/2"
+          : "-top-5 sm:-top-6 left-1/2 -translate-x-1/2";
       case "bottom":
         return "-bottom-5 sm:-bottom-6 left-1/2 -translate-x-1/2";
       case "left":
-        return "top-1/2 -left-9 sm:-left-12 -translate-y-1/2";
+        return "top-1/2 -left-8 sm:-left-10 -translate-y-1/2";
       case "right":
-        return "top-1/2 -right-9 sm:-right-12 -translate-y-1/2";
+        return "top-1/2 -right-8 sm:-right-10 -translate-y-1/2";
     }
   };
 
@@ -184,14 +186,14 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
           <motion.div
             initial={{ scale: 0.5, y: 10, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
-            className={`absolute ${getChipPosClass(chipPosition)} flex items-center gap-1 bg-black/90 px-2 py-0.5 rounded-full border border-gold-400/60 shadow-xl z-30 backdrop-blur-md`}
+            className={`absolute ${getChipPosClass(chipPosition, true)} flex items-center gap-1 bg-black/90 px-1.5 py-0.5 rounded-full border border-gold-400/60 shadow-md z-30 backdrop-blur-md whitespace-nowrap`}
           >
-            <ChipView amount={player.committedThisRound} size="sm" />
-            <span className="text-[11px] font-mono font-bold text-gold-300">
+            <ChipView amount={player.committedThisRound} size="xs" />
+            <span className="text-[9px] sm:text-[10px] font-mono font-bold text-gold-300">
               ₹{player.committedThisRound.toLocaleString()}
             </span>
             {isPlayerBlind && (
-              <span className="text-[8px] font-black text-amber-400 bg-amber-950/80 px-1 rounded uppercase">
+              <span className="text-[7.5px] font-black text-amber-400 bg-amber-950/80 px-1 rounded uppercase">
                 Blind
               </span>
             )}
@@ -368,10 +370,10 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
         <motion.div
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className={`absolute ${getChipPosClass(chipPosition)} flex items-center gap-0.5 bg-black/90 px-1.5 py-0.5 rounded-full border border-gold-400/50 shadow-lg z-30 backdrop-blur-sm whitespace-nowrap`}
+          className={`absolute ${getChipPosClass(chipPosition, player.cards.length > 0)} flex items-center gap-0.5 bg-black/90 px-1 py-0.5 rounded-full border border-gold-400/50 shadow-md z-30 backdrop-blur-sm whitespace-nowrap`}
         >
-          <ChipView amount={player.committedThisRound} size="sm" />
-          <span className="text-[9px] sm:text-[10px] font-mono font-bold text-gold-300">
+          <ChipView amount={player.committedThisRound} size="xs" />
+          <span className="text-[8px] sm:text-[9px] font-mono font-bold text-gold-300">
             ₹{player.committedThisRound.toLocaleString()}
           </span>
         </motion.div>

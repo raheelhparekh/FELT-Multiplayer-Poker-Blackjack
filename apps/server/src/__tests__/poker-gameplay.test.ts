@@ -169,9 +169,9 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     expect(finalSnap.winners).toBeDefined();
     expect(finalSnap.winners!.length).toBeGreaterThan(0);
 
-    // Verify chip conservation: Alice stack + Bob stack === 2000
+    // Verify chip conservation: Alice stack + Bob stack === 20000 (starting stack 10000 each)
     const totalChips = finalSnap.players.reduce((sum: number, p: any) => sum + p.stack, 0);
-    expect(totalChips).toBe(2000);
+    expect(totalChips).toBe(20000);
 
     host.disconnect();
     bob.disconnect();
@@ -215,7 +215,7 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     expect(winnerId).not.toBe(foldingClient.playerId);
 
     const totalChips = summarySnap.players.reduce((sum: number, p: any) => sum + p.stack, 0);
-    expect(totalChips).toBe(2000);
+    expect(totalChips).toBe(20000);
 
     // Verify PNL & ledger: transactions recorded for winners & losers
     expect(summarySnap.transactions).toBeDefined();
@@ -228,7 +228,7 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     expect(summarySnap.stacks).toBeDefined();
     expect(summarySnap.stacks[winnerId]).toBe(summarySnap.players.find((p: any) => p.id === winnerId)!.stack);
     expect(summarySnap.totalBuyIns).toBeDefined();
-    expect(summarySnap.totalBuyIns[winnerId]).toBe(1000);
+    expect(summarySnap.totalBuyIns[winnerId]).toBe(10000);
 
     alice.disconnect();
     bob.disconnect();
@@ -371,7 +371,7 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     });
 
     // Bob's stack must NOT have increased yet!
-    expect(hostSnapWithPending.stacks[bob.playerId]).toBe(1000);
+    expect(hostSnapWithPending.stacks[bob.playerId]).toBe(10000);
 
     // Host declines the request
     await alice.hostRejectRebuy(bob.playerId);
@@ -383,8 +383,8 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
       );
     });
 
-    // Bob's stack is still 1000
-    expect(hostSnapAfterReject.stacks[bob.playerId]).toBe(1000);
+    // Bob's stack is still 10000
+    expect(hostSnapAfterReject.stacks[bob.playerId]).toBe(10000);
 
     // Bob requests 1500 chips
     await bob.rebuyRequest(1500);
@@ -398,12 +398,12 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     // Host approves the request!
     await alice.hostApproveRebuy(bob.playerId, 1500);
 
-    // Wait for Bob's stack to become 2500
+    // Wait for Bob's stack to become 11500 (10000 + 1500)
     const hostSnapAfterApprove = await alice.waitForSnapshot((s: any) => {
-      return s.stacks[bob.playerId] === 2500;
+      return s.stacks[bob.playerId] === 11500;
     });
 
-    expect(hostSnapAfterApprove.stacks[bob.playerId]).toBe(2500);
+    expect(hostSnapAfterApprove.stacks[bob.playerId]).toBe(11500);
 
     alice.disconnect();
     bob.disconnect();

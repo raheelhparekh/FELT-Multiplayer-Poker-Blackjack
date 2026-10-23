@@ -75,7 +75,7 @@ export const CardView: React.FC<CardViewProps> = ({
           delay: dealDelay,
           duration: animDuration,
         }}
-        className={`relative rounded border border-amber-500/50 bg-gradient-to-br from-[#1a0a0f] via-[#2c1318] to-[#14080b] shadow-[0_4px_14px_rgba(0,0,0,0.6)] flex items-center justify-center select-none overflow-hidden ${
+        className={`relative rounded border border-amber-500/50 bg-gradient-to-br from-[#1a0a0f] via-[#2c1318] to-[#14080b] shadow-[0_4px_14px_rgba(0,0,0,0.6)] flex items-center justify-center select-none overflow-hidden aspect-[5/7] shrink-0 ${
           isMicro
             ? "w-5 h-7 sm:w-6 sm:h-9"
             : isSmall
@@ -124,7 +124,7 @@ export const CardView: React.FC<CardViewProps> = ({
         duration: isFlipping ? 0.65 : animDuration,
       }}
       style={{ transformStyle: "preserve-3d" }}
-      className={`relative rounded-lg bg-gradient-to-b from-white to-slate-100 border border-slate-300/90 shadow-[0_6px_16px_rgba(0,0,0,0.6)] flex flex-col justify-between select-none font-black ${
+      className={`relative rounded-lg bg-gradient-to-b from-white to-slate-100 border border-slate-300/90 shadow-[0_6px_16px_rgba(0,0,0,0.6)] flex flex-col justify-between select-none font-black aspect-[5/7] shrink-0 ${
         isMicro
           ? "w-5 h-7 sm:w-6 sm:h-9 p-0.5 text-[8px]"
           : isSmall
