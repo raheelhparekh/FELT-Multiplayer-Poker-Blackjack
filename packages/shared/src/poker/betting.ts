@@ -155,10 +155,22 @@ export function computeLegalActions(
     const standardMinRaiseTo = currentBet + minIncrement;
     const maxPossibleRaiseTo = player.committedThisRound + player.stack;
 
-    if (maxPossibleRaiseTo > currentBet) {
-      canRaise = true;
-      minRaiseTo = Math.min(standardMinRaiseTo, maxPossibleRaiseTo);
-      maxRaiseTo = maxPossibleRaiseTo;
+    // Under-raise / Reopening rule (TDA Rule 43 / Robert's Rules):
+    // A player who has already acted this round can only raise if facing a full raise
+    const isActionReopened =
+      !player.actedThisRound || currentBet - player.committedThisRound >= minIncrement;
+
+    if (isActionReopened && maxPossibleRaiseTo > currentBet) {
+      if (maxPossibleRaiseTo >= standardMinRaiseTo) {
+        canRaise = true;
+        minRaiseTo = standardMinRaiseTo;
+        maxRaiseTo = maxPossibleRaiseTo;
+      } else {
+        // Player does not have enough chips for a standard raise, but can go all-in
+        canRaise = true;
+        minRaiseTo = maxPossibleRaiseTo;
+        maxRaiseTo = maxPossibleRaiseTo;
+      }
     }
   }
 

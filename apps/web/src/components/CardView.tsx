@@ -6,6 +6,7 @@ import { useSettingsStore } from "../store/settings-store";
 interface CardViewProps {
   cardSlot: ClientCard;
   isSmall?: boolean;
+  isMicro?: boolean;
   className?: string;
   isRotated90?: boolean; // For Doubled down cards
   dealIndex?: number; // Staggered deal order
@@ -22,6 +23,7 @@ const SUIT_SYMBOLS: Record<Suit, string> = {
 export const CardView: React.FC<CardViewProps> = ({
   cardSlot,
   isSmall = false,
+  isMicro = false,
   className = "",
   isRotated90 = false,
   dealIndex = 0,
@@ -73,14 +75,18 @@ export const CardView: React.FC<CardViewProps> = ({
           delay: dealDelay,
           duration: animDuration,
         }}
-        className={`relative rounded-lg border-2 border-amber-500/50 bg-gradient-to-br from-[#1a0a0f] via-[#2c1318] to-[#14080b] shadow-[0_8px_20px_rgba(0,0,0,0.6)] flex items-center justify-center select-none overflow-hidden ${
-          isSmall ? "w-8 h-12" : "w-14 h-20 sm:w-16 sm:h-24"
+        className={`relative rounded border border-amber-500/50 bg-gradient-to-br from-[#1a0a0f] via-[#2c1318] to-[#14080b] shadow-[0_4px_14px_rgba(0,0,0,0.6)] flex items-center justify-center select-none overflow-hidden ${
+          isMicro
+            ? "w-5 h-7 sm:w-6 sm:h-9"
+            : isSmall
+              ? "w-8 h-12"
+              : "w-14 h-20 sm:w-16 sm:h-24"
         } ${className}`}
       >
         {/* Geometric Casino Diamond Pattern */}
-        <div className="absolute inset-1 border border-gold-400/30 rounded flex items-center justify-center bg-[radial-gradient(#d4af37_1px,transparent_1px)] [background-size:6px_6px] opacity-75">
-          <div className="w-5 h-7 border border-gold-400/60 rounded flex items-center justify-center bg-black/40">
-            <span className="text-gold-300 font-serif text-xs">♠</span>
+        <div className="absolute inset-0.5 border border-gold-400/30 rounded flex items-center justify-center bg-[radial-gradient(#d4af37_1px,transparent_1px)] [background-size:4px_4px] opacity-75">
+          <div className={`${isMicro ? "w-3 h-4" : "w-5 h-7"} border border-gold-400/60 rounded flex items-center justify-center bg-black/40`}>
+            <span className={`text-gold-300 font-serif ${isMicro ? "text-[8px]" : "text-xs"}`}>♠</span>
           </div>
         </div>
       </motion.div>
@@ -118,27 +124,31 @@ export const CardView: React.FC<CardViewProps> = ({
         duration: isFlipping ? 0.65 : animDuration,
       }}
       style={{ transformStyle: "preserve-3d" }}
-      className={`relative rounded-lg bg-gradient-to-b from-white to-slate-100 border border-slate-300/90 shadow-[0_8px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between p-1 select-none font-black ${
-        isSmall ? "w-8 h-12 text-[10px]" : "w-14 h-20 sm:w-16 sm:h-24 text-xs sm:text-sm"
+      className={`relative rounded-lg bg-gradient-to-b from-white to-slate-100 border border-slate-300/90 shadow-[0_6px_16px_rgba(0,0,0,0.6)] flex flex-col justify-between select-none font-black ${
+        isMicro
+          ? "w-5 h-7 sm:w-6 sm:h-9 p-0.5 text-[8px]"
+          : isSmall
+            ? "w-8 h-12 p-1 text-[10px]"
+            : "w-14 h-20 sm:w-16 sm:h-24 p-1 text-xs sm:text-sm"
       } ${className}`}
     >
       {/* Top Left Index */}
       <div className={`leading-none flex flex-col items-center self-start ${colorClass}`}>
         <span className="tracking-tighter font-extrabold">{rank}</span>
-        <span className="text-[10px] sm:text-xs -mt-0.5 leading-none">{symbol}</span>
+        <span className={`${isMicro ? "text-[7px]" : "text-[10px] sm:text-xs"} -mt-0.5 leading-none`}>{symbol}</span>
       </div>
 
       {/* Center Large Watermark Suit */}
       <div
         className={`absolute inset-0 flex items-center justify-center pointer-events-none opacity-85 ${colorClass}`}
       >
-        <span className={isSmall ? "text-sm" : "text-2xl sm:text-3xl"}>{symbol}</span>
+        <span className={isMicro ? "text-xs" : isSmall ? "text-sm" : "text-2xl sm:text-3xl"}>{symbol}</span>
       </div>
 
       {/* Bottom Right Index (Rotated) */}
       <div className={`leading-none flex flex-col items-center self-end rotate-180 ${colorClass}`}>
         <span className="tracking-tighter font-extrabold">{rank}</span>
-        <span className="text-[10px] sm:text-xs -mt-0.5 leading-none">{symbol}</span>
+        <span className={`${isMicro ? "text-[7px]" : "text-[10px] sm:text-xs"} -mt-0.5 leading-none`}>{symbol}</span>
       </div>
     </motion.div>
   );

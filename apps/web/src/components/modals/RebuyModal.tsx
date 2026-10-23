@@ -14,7 +14,7 @@ export const RebuyModal: React.FC = () => {
   const minAllowed = isPoker ? (pokerCfg?.minBuyIn ?? 100) : 100;
   const maxAllowed = isPoker ? (pokerCfg?.maxBuyIn ?? 20000) : 20000;
   const initialAmount = isPoker
-    ? (pokerCfg?.rebuyAmount ?? pokerCfg?.minBuyIn ?? 1000)
+    ? (pokerCfg?.rebuyAmount ?? 10000)
     : (currentView?.config.startingStack || 1000);
 
   const [requested, setRequested] = useState(false);
@@ -29,8 +29,8 @@ export const RebuyModal: React.FC = () => {
   const presets = isPoker
     ? [
         minAllowed,
-        Math.min(maxAllowed, Math.max(minAllowed, 500)),
-        Math.min(maxAllowed, Math.max(minAllowed, 1000)),
+        Math.min(maxAllowed, Math.max(minAllowed, 5000)),
+        10000,
         maxAllowed,
       ].filter((v, idx, arr) => arr.indexOf(v) === idx)
     : [1000, 5000, 10000, 20000];

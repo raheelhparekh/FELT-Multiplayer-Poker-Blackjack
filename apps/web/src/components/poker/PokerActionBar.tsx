@@ -125,18 +125,18 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
     <motion.div
       initial={{ y: 30, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="w-full max-w-2xl mx-auto px-4 py-3 bg-gradient-to-t from-black via-zinc-950/90 to-emerald-950/70 backdrop-blur-xl rounded-3xl border border-gold-400/50 shadow-[0_0_30px_rgba(0,0,0,0.8)] flex flex-col gap-2.5 z-30 select-none"
+      className="w-full max-w-2xl mx-auto px-2.5 py-2 sm:px-4 sm:py-3 bg-gradient-to-t from-black via-zinc-950/95 to-emerald-950/75 backdrop-blur-xl rounded-2xl sm:rounded-3xl border border-gold-400/50 shadow-[0_0_25px_rgba(0,0,0,0.8)] flex flex-col gap-1.5 sm:gap-2.5 z-30 select-none"
     >
       {/* Bet / Raise Slider & Quick Buttons */}
       {(canBet || canRaise) && (
-        <div className="flex flex-col gap-2 bg-black/40 p-2.5 rounded-2xl border border-emerald-800/40">
+        <div className="flex flex-col gap-1.5 sm:gap-2 bg-black/40 p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border border-emerald-800/40">
           <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
             <span>{canBet ? "Bet Sizing" : "Raise Sizing"}:</span>
-            <span className="font-mono text-gold-300 text-sm">₹{betAmount.toLocaleString()}</span>
+            <span className="font-mono text-gold-300 text-xs sm:text-sm">₹{betAmount.toLocaleString()}</span>
           </div>
 
           {/* Quick Bet Preset Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+          <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5">
             <button
               type="button"
               onClick={() => setBetAmount(defaultMin)}
@@ -198,7 +198,7 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
             soundEngine.play("card_flip");
             onFold();
           }}
-          className="min-h-[48px] sm:min-h-[52px] rounded-2xl bg-gradient-to-b from-red-700 via-red-800 to-red-950 hover:from-red-600 hover:to-red-900 text-white font-extrabold text-sm sm:text-base border border-red-500/60 shadow-[0_4px_15px_rgba(220,38,38,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
+          className="min-h-[42px] sm:min-h-[50px] rounded-xl sm:rounded-2xl bg-gradient-to-b from-red-700 via-red-800 to-red-950 hover:from-red-600 hover:to-red-900 text-white font-extrabold text-sm sm:text-base border border-red-500/60 shadow-[0_4px_15px_rgba(220,38,38,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
         >
           <span>Fold</span>
           <span className="text-[10px] text-red-200/70 font-mono font-normal">F</span>
@@ -214,7 +214,7 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
               soundEngine.play("chip_place");
               onCheck();
             }}
-            className="min-h-[48px] sm:min-h-[52px] rounded-2xl bg-gradient-to-b from-emerald-600 via-emerald-700 to-emerald-900 hover:from-emerald-500 hover:to-emerald-800 text-white font-extrabold text-sm sm:text-base border border-emerald-400/60 shadow-[0_4px_15px_rgba(16,185,129,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
+            className="min-h-[42px] sm:min-h-[50px] rounded-xl sm:rounded-2xl bg-gradient-to-b from-emerald-600 via-emerald-700 to-emerald-900 hover:from-emerald-500 hover:to-emerald-800 text-white font-extrabold text-sm sm:text-base border border-emerald-400/60 shadow-[0_4px_15px_rgba(16,185,129,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
           >
             <span>Check</span>
             <span className="text-[10px] text-emerald-200/70 font-mono font-normal">C</span>
@@ -228,7 +228,7 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
               soundEngine.play("chip_place");
               onCall();
             }}
-            className="min-h-[48px] sm:min-h-[52px] rounded-2xl bg-gradient-to-b from-teal-600 via-teal-700 to-teal-900 hover:from-teal-500 hover:to-teal-800 text-white font-extrabold text-sm sm:text-base border border-teal-400/60 shadow-[0_4px_15px_rgba(20,184,166,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
+            className="min-h-[42px] sm:min-h-[50px] rounded-xl sm:rounded-2xl bg-gradient-to-b from-teal-600 via-teal-700 to-teal-900 hover:from-teal-500 hover:to-teal-800 text-white font-extrabold text-sm sm:text-base border border-teal-400/60 shadow-[0_4px_15px_rgba(20,184,166,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
           >
             <span>Call ₹{toCall.toLocaleString()}</span>
             <span className="text-[10px] text-teal-200/70 font-mono font-normal">C</span>
@@ -245,7 +245,7 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
               soundEngine.play("chip_place");
               onBet(betAmount);
             }}
-            className="min-h-[48px] sm:min-h-[52px] rounded-2xl bg-gradient-to-b from-gold-400 via-gold-500 to-amber-600 hover:from-gold-300 hover:to-amber-500 text-black font-extrabold text-sm sm:text-base border border-amber-300 shadow-[0_4px_20px_rgba(212,175,55,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
+            className="min-h-[42px] sm:min-h-[50px] rounded-xl sm:rounded-2xl bg-gradient-to-b from-gold-400 via-gold-500 to-amber-600 hover:from-gold-300 hover:to-amber-500 text-black font-extrabold text-sm sm:text-base border border-amber-300 shadow-[0_4px_20px_rgba(212,175,55,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
           >
             <span>Bet ₹{betAmount.toLocaleString()}</span>
             <span className="text-[10px] text-zinc-900/80 font-mono font-normal">B</span>
@@ -259,7 +259,7 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
               soundEngine.play("chip_place");
               onRaise(betAmount);
             }}
-            className="min-h-[48px] sm:min-h-[52px] rounded-2xl bg-gradient-to-b from-gold-400 via-gold-500 to-amber-600 hover:from-gold-300 hover:to-amber-500 text-black font-extrabold text-sm sm:text-base border border-amber-300 shadow-[0_4px_20px_rgba(212,175,55,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
+            className="min-h-[42px] sm:min-h-[50px] rounded-xl sm:rounded-2xl bg-gradient-to-b from-gold-400 via-gold-500 to-amber-600 hover:from-gold-300 hover:to-amber-500 text-black font-extrabold text-sm sm:text-base border border-amber-300 shadow-[0_4px_20px_rgba(212,175,55,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
           >
             <span>Raise to ₹{betAmount.toLocaleString()}</span>
             <span className="text-[10px] text-zinc-900/80 font-mono font-normal">R</span>
@@ -273,7 +273,7 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
               soundEngine.play("chip_place");
               onAllIn();
             }}
-            className="min-h-[48px] sm:min-h-[52px] rounded-2xl bg-gradient-to-b from-red-600 via-rose-700 to-red-900 hover:from-red-500 hover:to-rose-800 text-white font-extrabold text-sm sm:text-base border border-rose-400 shadow-[0_4px_20px_rgba(244,63,94,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
+            className="min-h-[42px] sm:min-h-[50px] rounded-xl sm:rounded-2xl bg-gradient-to-b from-red-600 via-rose-700 to-red-900 hover:from-red-500 hover:to-rose-800 text-white font-extrabold text-sm sm:text-base border border-rose-400 shadow-[0_4px_20px_rgba(244,63,94,0.4)] flex flex-col items-center justify-center cursor-pointer transition-all"
           >
             <span>All-In (₹{heroStack.toLocaleString()})</span>
             <span className="text-[10px] text-rose-200/80 font-mono font-normal">A</span>

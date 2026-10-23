@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ClientPokerGameView, SeatNumber } from "@felt/shared";
 import { soundEngine } from "../audio/sound-engine";
@@ -14,22 +14,39 @@ import { StandingsModal } from "../components/modals/StandingsModal";
 import { useGameStore } from "../store/game-store";
 
 // Visual slot positions (in percentage of table width/height) around a 9-max oval table.
-// Slot 0 is bottom center (anchored to hero).
-const SEAT_POSITIONS_9: Array<{ left: string; top: string }> = [
-  { left: "50%", top: "86%" }, // 0: Bottom Center (Hero)
-  { left: "20%", top: "80%" }, // 1: Bottom Left
-  { left: "9%", top: "50%" },  // 2: Middle Left
-  { left: "20%", top: "20%" }, // 3: Top Left
-  { left: "37%", top: "12%" }, // 4: Top Center-Left
-  { left: "63%", top: "12%" }, // 5: Top Center-Right
-  { left: "80%", top: "20%" }, // 6: Top Right
-  { left: "91%", top: "50%" }, // 7: Middle Right
-  { left: "80%", top: "80%" }, // 8: Bottom Right
+interface SeatSlotPos {
+  left: string;
+  top: string;
+  chipPos: "top" | "bottom" | "left" | "right";
+}
+
+// Perimeter corner positions (designed specifically for mobile screens like iPhone 15/16/17)
+// Slot 0 is Bottom Center (Hero). Slots 1-8 are arranged around the outer rail and corners.
+const SEAT_POSITIONS_9: Array<SeatSlotPos> = [
+  { left: "50%", top: "79%", chipPos: "top" },    // 0: Bottom Center (Hero)
+  { left: "14%", top: "68%", chipPos: "top" },    // 1: Bottom Left Corner
+  { left: "7%",  top: "43%", chipPos: "right" },  // 2: Middle Left Edge
+  { left: "13%", top: "15%", chipPos: "bottom" }, // 3: Top Left Corner
+  { left: "36%", top: "9%",  chipPos: "bottom" }, // 4: Top Center-Left
+  { left: "64%", top: "9%",  chipPos: "bottom" }, // 5: Top Center-Right
+  { left: "87%", top: "15%", chipPos: "bottom" }, // 6: Top Right Corner
+  { left: "93%", top: "43%", chipPos: "left" },   // 7: Middle Right Edge
+  { left: "86%", top: "68%", chipPos: "top" },    // 8: Bottom Right Corner
+];
+
+const SEAT_POSITIONS_6: Array<SeatSlotPos> = [
+  { left: "50%", top: "79%", chipPos: "top" },    // 0: Bottom Center (Hero)
+  { left: "14%", top: "65%", chipPos: "top" },    // 1: Bottom Left
+  { left: "16%", top: "15%", chipPos: "bottom" }, // 2: Top Left
+  { left: "50%", top: "9%",  chipPos: "bottom" }, // 3: Top Center
+  { left: "84%", top: "15%", chipPos: "bottom" }, // 4: Top Right
+  { left: "86%", top: "65%", chipPos: "top" },    // 5: Bottom Right
 ];
 
 export const PokerTableScreen: React.FC = () => {
   const currentView = useGameStore((s) => s.currentView) as ClientPokerGameView | null;
   const myPlayerId = useGameStore((s) => s.myPlayerId);
+  const [rebuySent, setRebuySent] = useState(false);
 
   const {
     sit,
@@ -42,6 +59,7 @@ export const PokerTableScreen: React.FC = () => {
     pokerAllIn,
     pokerNextHand,
     resume,
+    rebuyRequest,
   } = useGameStore.getState();
 
   if (!currentView || currentView.gameType !== "poker") return null;
@@ -119,8 +137,18 @@ export const PokerTableScreen: React.FC = () => {
     }
   }, [currentView.street]);
 
-  // Check if seated player has low stack
-  const canRebuy = !isSpectator && myPlayer && myPlayer.stack < currentView.config.bigBlind;
+  // Check if seated player has low stack (<1000 or < bigBlind)
+  const canRebuy =
+    !isSpectator &&
+    myPlayer &&
+    (myPlayer.stack < 1000 || myPlayer.stack < currentView.config.bigBlind);
+
+  const isMidHandJoiner =
+    !isSpectator &&
+    myPlayer &&
+    myPlayer.hasFolded &&
+    myPlayer.cards.length === 0 &&
+    currentView.phase !== "lobby";
 
   return (
     <div
@@ -130,11 +158,11 @@ export const PokerTableScreen: React.FC = () => {
       {/* Top Header */}
       <HeaderBar />
 
-      {/* Main Felt Canvas */}
-      <main className="flex-1 relative flex flex-col overflow-y-auto overflow-x-hidden p-2 sm:p-4">
+      {/* Main Felt Canvas - overflow-hidden prevents page bounce/scroll on iPhone */}
+      <main className="flex-1 relative flex flex-col overflow-hidden p-1 sm:p-4 min-h-0">
         {/* Felt Table Surface Oval & Rail */}
         <div
-          className="relative flex-1 w-full max-w-6xl mx-auto rounded-[3rem] sm:rounded-[4.5rem] border-[8px] sm:border-[10px] shadow-[inset_0_0_120px_rgba(0,0,0,0.9),0_15px_45px_rgba(0,0,0,0.8)] flex flex-col justify-between p-2 sm:p-6 pb-2 transition-all duration-500 min-h-[500px]"
+          className="relative flex-1 w-full max-w-6xl mx-auto rounded-[2.2rem] sm:rounded-[4.5rem] border-[6px] sm:border-[10px] shadow-[inset_0_0_90px_rgba(0,0,0,0.9),0_12px_40px_rgba(0,0,0,0.8)] flex flex-col justify-between p-1 sm:p-6 transition-all duration-500 h-full min-h-0"
           style={{
             background:
               "radial-gradient(ellipse at center, var(--felt-surface-from) 0%, var(--felt-surface-via) 50%, var(--felt-surface-to) 100%)",
@@ -185,17 +213,46 @@ export const PokerTableScreen: React.FC = () => {
             </div>
           )}
 
-          {/* Low Stack / Rebuy Banner */}
+          {/* Mid-hand Joiner Banner */}
+          {isMidHandJoiner && (
+            <div className="relative z-30 mx-auto mb-1 flex items-center gap-1.5 bg-blue-950/85 border border-blue-500/70 px-3.5 py-1 rounded-full text-xs text-blue-200 shadow-md">
+              <span className="text-sm">⏳</span>
+              <span>Joined mid-round: you are seated and will be dealt into the next hand!</span>
+            </div>
+          )}
+
+          {/* Low Stack / Rebuy Banner (<1000 or <bigBlind) */}
           {canRebuy && (
-            <div className="relative z-30 mx-auto mb-2 flex items-center gap-2 bg-amber-950/80 border border-amber-500/70 px-4 py-1.5 rounded-xl text-xs text-amber-200 shadow-lg animate-pulse">
-              <span>Your stack is below the big blind!</span>
-              <button
-                type="button"
-                onClick={() => openModal("rebuy")}
-                className="px-2.5 py-1 rounded-lg bg-gold-400 hover:bg-gold-300 text-black font-bold text-[11px] shadow transition-transform active:scale-95"
-              >
-                Request Rebuy
-              </button>
+            <div className="relative z-30 mx-auto mb-2 flex items-center gap-2 bg-amber-950/90 border border-amber-500/80 px-3.5 py-1.5 rounded-xl text-xs text-amber-200 shadow-xl backdrop-blur-md">
+              <span className="font-semibold">
+                {rebuySent
+                  ? "✓ Request for 10,000 chips sent to host!"
+                  : myPlayer.stack <= 0
+                    ? "Out of chips!"
+                    : `Chips low (₹${myPlayer.stack.toLocaleString()})`}
+              </span>
+              {!rebuySent && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      rebuyRequest(10000);
+                      setRebuySent(true);
+                      setTimeout(() => setRebuySent(false), 4000);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-gold-400 hover:bg-gold-300 active:scale-95 text-black font-extrabold text-[11px] shadow transition-all flex items-center gap-1"
+                  >
+                    <span>Request +10k Chips</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openModal("rebuy")}
+                    className="text-[11px] text-gold-300/80 hover:text-gold-200 underline px-1"
+                  >
+                    Custom
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -248,10 +305,11 @@ export const PokerTableScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* Seats Arranged Around the Oval Rail */}
+          {/* Seats Arranged Around the Perimeter Corners & Rail */}
           <div className="absolute inset-0 pointer-events-none z-20">
             {orderedSeats.map((seatNum, slotIdx) => {
-              const pos = SEAT_POSITIONS_9[slotIdx % SEAT_POSITIONS_9.length] ?? { left: "50%", top: "50%" };
+              const seatLayout = maxSeats <= 6 ? SEAT_POSITIONS_6 : SEAT_POSITIONS_9;
+              const pos = seatLayout[slotIdx % seatLayout.length] ?? { left: "50%", top: "50%", chipPos: "top" };
               const player = currentView.players.find((p) => p.seatNumber === seatNum) ?? null;
               const isMe = player?.id === myPlayerId;
               const isDealerButton = currentView.dealerButtonSeat === seatNum;
@@ -261,7 +319,7 @@ export const PokerTableScreen: React.FC = () => {
               return (
                 <div
                   key={`poker-seat-slot-${seatNum}`}
-                  className="absolute pointer-events-auto transform -translate-x-1/2 -translate-y-1/2"
+                  className="absolute pointer-events-auto transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300"
                   style={{ left: pos.left, top: pos.top }}
                 >
                   <PokerSeatView
@@ -277,7 +335,8 @@ export const PokerTableScreen: React.FC = () => {
                     dealOrder={slotIdx}
                     totalSeated={orderedSeats.length}
                     handNumber={currentView.handNumber}
-                    className={isMe ? "scale-105 sm:scale-110" : "scale-90 sm:scale-100"}
+                    chipPosition={pos.chipPos}
+                    className={isMe ? "scale-100 sm:scale-110" : "scale-85 sm:scale-95"}
                   />
                 </div>
               );
@@ -288,7 +347,7 @@ export const PokerTableScreen: React.FC = () => {
 
       {/* Pinned Bottom Thumb Reach Action Bar (for seated hero) */}
       {!isSpectator && myPlayer && (
-        <div className="relative z-30 p-2 sm:p-3 pb-4">
+        <div className="relative z-30 p-1 sm:p-3 pb-2 sm:pb-4 shrink-0">
           <PokerActionBar
             isMyTurn={isMyTurn}
             legalActions={currentView.myLegalActions}

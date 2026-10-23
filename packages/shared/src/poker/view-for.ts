@@ -67,14 +67,15 @@ export interface ClientPokerGameView {
  * Redacts hidden hole cards, undealt deck, and burned cards.
  */
 export function viewFor(state: PokerState, viewerId: string): ClientPokerGameView {
-  const isShowdownOrSummary = state.phase === "showdown" || state.phase === "hand_summary";
+  const isFoldWin = Boolean(state.winners?.some((w) => w.handName === "All other players folded"));
+  const isShowdown = (state.phase === "showdown" || state.phase === "hand_summary") && !isFoldWin;
 
   const clientPlayers: ClientPokerPlayerView[] = [];
 
   for (const [pid, player] of state.players) {
     const participant = state.participants.get(pid);
     const isOwner = pid === viewerId;
-    const isRevealed = isShowdownOrSummary && (!player.hasFolded || player.showedCards);
+    const isRevealed = (isShowdown && !player.hasFolded) || Boolean(player.showedCards);
 
     let cards: ClientCard[] = [];
     if (player.holeCards.length > 0) {

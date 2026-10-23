@@ -235,4 +235,15 @@ describe("Poker Pure Reducer (§5.3, §12.4)", () => {
     expect(countChips(s)).toBe(initialTotal);
     expect(s.phase).toBe("hand_summary");
   });
+
+  it("POKER RULE SAFEGUARD: seated players with 0 stack are automatically sat out and not dealt into new hands", () => {
+    const { state } = setupTwoPlayerGame(1000);
+    // Alice has 1000 chips, but Bob busted in a previous round (stack = 0)
+    state.stacks.set("bob", 0);
+    state.players.get("bob")!.stack = 0;
+
+    // Starting a hand requires at least 2 active players with chips.
+    // Because Bob is 0 chips, Bob is placed in sittingOut, leaving only Alice.
+    expect(() => reduce(state, { type: "poker:startHand" })).toThrow(/Need at least 2 active seated players/);
+  });
 });

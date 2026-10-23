@@ -136,6 +136,19 @@ export function resolvePots(
       (e) => compareEvaluations(e.evaluation, bestEval.evaluation) === 0
     );
 
+    // If single winner, award entire pot amount directly (100% chip conservation)
+    if (tyingWinners.length === 1) {
+      const soleWinner = tyingWinners[0]!;
+      winners.push({
+        playerId: soleWinner.playerId,
+        potIndex,
+        amount: pot.amount,
+        handName: soleWinner.evaluation.name,
+        evaluation: soleWinner.evaluation,
+      });
+      continue;
+    }
+
     const share = Math.floor(pot.amount / tyingWinners.length / chipUnit) * chipUnit;
     let remainder = pot.amount - share * tyingWinners.length;
 
@@ -146,18 +159,25 @@ export function resolvePots(
       return idxA - idxB;
     });
 
+    const payouts = new Array(orderedWinners.length).fill(share);
+    let idx = 0;
+    while (remainder >= chipUnit) {
+      payouts[idx % orderedWinners.length] += chipUnit;
+      remainder -= chipUnit;
+      idx++;
+    }
+    // Any remaining odd chips (< chipUnit) must still be conserved and awarded clockwise
+    if (remainder > 0) {
+      payouts[0] += remainder;
+      remainder = 0;
+    }
+
     for (let i = 0; i < orderedWinners.length; i++) {
       const w = orderedWinners[i]!;
-      let payout = share;
-      if (remainder >= chipUnit) {
-        payout += chipUnit;
-        remainder -= chipUnit;
-      }
-
       winners.push({
         playerId: w.playerId,
         potIndex,
-        amount: payout,
+        amount: payouts[i]!,
         handName: w.evaluation.name,
         evaluation: w.evaluation,
       });

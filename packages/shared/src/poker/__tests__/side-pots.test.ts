@@ -169,4 +169,77 @@ describe("Poker Side Pots Engine (§5.6, §12.3)", () => {
     expect(winP2.amount).toBe(50);
     expect(winP3.amount).toBe(25);
   });
+
+  it("CRITICAL ACCOUNTING: guarantees 100% chip conservation when single winner wins non-chipUnit pot", () => {
+    // Pot of 70 chips (not divisible by chipUnit 25) with a single winner
+    const pots: Pot[] = [{ amount: 70, eligiblePlayerIds: ["p1"] }];
+    const community = ["10s", "Jd", "Qc", "2s", "3h"].map(parseCard);
+    const players = new Map<string, PokerPlayerState>([
+      [
+        "p1",
+        {
+          id: "p1",
+          seatNumber: 1,
+          holeCards: ["Ah", "Kd"].map(parseCard),
+          stack: 0,
+          committedThisRound: 0,
+          committedThisHand: 70,
+          hasFolded: false,
+          isAllIn: true,
+          actedThisRound: true,
+        },
+      ],
+    ]);
+
+    const winners = resolvePots(pots, players, community, 1, 25);
+    expect(winners).toHaveLength(1);
+    // Entire 70 chips awarded, 0 chips evaporated
+    expect(winners[0]!.amount).toBe(70);
+  });
+
+  it("CRITICAL ACCOUNTING: guarantees 100% chip conservation on split pot with sub-chipUnit odd remainder", () => {
+    // Pot of 110 chips split between p1 (seat 2) and p2 (seat 3), button at seat 1. chipUnit = 25
+    // Base share = 25 each = 50 total. Remainder = 60.
+    // 1 chipUnit to p1 (now 50, rem 35). 1 chipUnit to p2 (now 50, rem 10).
+    // Remaining 10 chips (< chipUnit) awarded to p1 (closest to button+1) -> p1: 60, p2: 50. Sum = 110!
+    const pots: Pot[] = [{ amount: 110, eligiblePlayerIds: ["p1", "p2"] }];
+    const community = ["10s", "Jd", "Qc", "2s", "3h"].map(parseCard);
+    const players = new Map<string, PokerPlayerState>([
+      [
+        "p1",
+        {
+          id: "p1",
+          seatNumber: 2,
+          holeCards: ["Ah", "Kd"].map(parseCard),
+          stack: 0,
+          committedThisRound: 0,
+          committedThisHand: 55,
+          hasFolded: false,
+          isAllIn: false,
+          actedThisRound: true,
+        },
+      ],
+      [
+        "p2",
+        {
+          id: "p2",
+          seatNumber: 3,
+          holeCards: ["As", "Kc"].map(parseCard),
+          stack: 0,
+          committedThisRound: 0,
+          committedThisHand: 55,
+          hasFolded: false,
+          isAllIn: false,
+          actedThisRound: true,
+        },
+      ],
+    ]);
+
+    const winners = resolvePots(pots, players, community, 1, 25);
+    expect(winners).toHaveLength(2);
+    const totalAwarded = winners.reduce((sum, w) => sum + w.amount, 0);
+    expect(totalAwarded).toBe(110); // Strictly conserved
+    expect(winners.find((w) => w.playerId === "p1")!.amount).toBe(60);
+    expect(winners.find((w) => w.playerId === "p2")!.amount).toBe(50);
+  });
 });

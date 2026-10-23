@@ -517,15 +517,30 @@ export const HostPanelModal: React.FC = () => {
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-emerald-400 block mb-1">Max Buy-In</span>
+                  <span className="text-[10px] text-emerald-400 block mb-1">Starting Coins (New Players)</span>
                   <input
                     type="number"
                     min={100}
                     max={20000}
-                    defaultValue={pokerCfg.maxBuyIn ?? 2000}
+                    defaultValue={pokerCfg.startingStack ?? 10000}
                     onBlur={(e) => {
                       const val = Number.parseInt(e.target.value, 10);
-                      if (val > 0) updateConfig({ maxBuyIn: val });
+                      if (val > 0) updateConfig({ startingStack: val } as any);
+                    }}
+                    className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-emerald-400 block mb-1">Default Rebuy (₹)</span>
+                  <input
+                    type="number"
+                    min={100}
+                    max={20000}
+                    defaultValue={pokerCfg.rebuyAmount ?? 10000}
+                    onBlur={(e) => {
+                      const val = Number.parseInt(e.target.value, 10);
+                      if (val > 0) updateConfig({ rebuyAmount: val } as any);
                     }}
                     className="w-full bg-black/60 border border-emerald-800 rounded px-2.5 py-1 text-xs text-white font-mono"
                   />

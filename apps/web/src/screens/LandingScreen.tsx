@@ -254,47 +254,68 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
             })}
           </div>
 
-          {/* Buy-In Chips */}
+          {/* Buy-In / Initial Coins */}
           <div className="pt-1">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                Chips To Enter With (Max ₹20k)
+                {selectedGameType === "poker"
+                  ? landingMode === "create"
+                    ? "Initial Coins for Each Player"
+                    : "Initial Table Coins"
+                  : "Chips To Enter With (Max ₹20k)"}
               </span>
               <span className="text-xs font-mono font-bold text-gold-400">
                 ₹{buyIn.toLocaleString()}
               </span>
             </div>
-            <div className="grid grid-cols-4 gap-1.5 mb-2">
-              {(selectedGameType === "poker"
-                ? [1000, 2500, 5000, 10000]
-                : [1000, 5000, 10000, 20000]
-              ).map((preset) => (
-                <button
-                  type="button"
-                  key={preset}
-                  onClick={() => setBuyIn(preset)}
-                  className={`py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
-                    buyIn === preset
-                      ? "bg-gold-400 text-black shadow-sm"
-                      : "bg-emerald-950/80 border border-emerald-800/40 text-emerald-200 hover:bg-emerald-900/40"
-                  }`}
-                >
-                  ₹{preset.toLocaleString()}
-                </button>
-              ))}
-            </div>
-            <input
-              type="number"
-              min={100}
-              max={20000}
-              step={100}
-              value={buyIn}
-              onChange={(e) =>
-                setBuyIn(Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)))
-              }
-              className="w-full bg-black/50 border border-emerald-700/60 focus:border-gold-400 rounded-xl px-3.5 py-2 text-sm font-mono font-semibold text-white placeholder-emerald-600 focus:outline-none transition-colors"
-              placeholder="Custom chip amount (max 20,000)"
-            />
+            {selectedGameType === "poker" && landingMode === "join" ? (
+              <div className="p-2.5 rounded-xl bg-black/40 border border-emerald-800/40 text-[11px] text-emerald-300/90 leading-relaxed">
+                ℹ️ The host configures initial coins for this poker room. All players join with equal starting coins.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  {(selectedGameType === "poker"
+                    ? [2500, 5000, 10000, 20000]
+                    : [1000, 5000, 10000, 20000]
+                  ).map((preset) => (
+                    <button
+                      type="button"
+                      key={preset}
+                      onClick={() => setBuyIn(preset)}
+                      className={`py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                        buyIn === preset
+                          ? "bg-gold-400 text-black shadow-sm"
+                          : "bg-emerald-950/80 border border-emerald-800/40 text-emerald-200 hover:bg-emerald-900/40"
+                      }`}
+                    >
+                      ₹{preset.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  min={100}
+                  max={20000}
+                  step={100}
+                  value={buyIn}
+                  onChange={(e) =>
+                    setBuyIn(Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)))
+                  }
+                  className="w-full bg-black/50 border border-emerald-700/60 focus:border-gold-400 rounded-xl px-3.5 py-2 text-sm font-mono font-semibold text-white placeholder-emerald-600 focus:outline-none transition-colors"
+                  placeholder={
+                    selectedGameType === "poker"
+                      ? "Initial coins for each player (max 20,000)"
+                      : "Custom chip amount (max 20,000)"
+                  }
+                />
+                {selectedGameType === "poker" && landingMode === "create" && (
+                  <p className="text-[10px] text-emerald-400/80 mt-1">
+                    Every player joining your room starts with this exact initial balance.
+                  </p>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -499,6 +520,26 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
                           <option value={6}>6-Max</option>
                           <option value={9}>9-Max (Full Ring)</option>
                         </select>
+                      </div>
+
+                      <div className="col-span-2">
+                        <label className="text-[10px] text-emerald-400 block font-bold uppercase mb-1">
+                          Initial Coins for Each Player (₹)
+                        </label>
+                        <input
+                          type="number"
+                          value={buyIn}
+                          min={100}
+                          max={20000}
+                          step={100}
+                          onChange={(e) =>
+                            setBuyIn(Math.min(20000, Math.max(100, Number.parseInt(e.target.value, 10) || 100)))
+                          }
+                          className="w-full bg-[#0a1a0f] border border-emerald-700/70 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                        />
+                        <span className="text-[10px] text-emerald-500/80 mt-0.5 block">
+                          All players joining will start with this exact balance.
+                        </span>
                       </div>
                     </div>
                   ) : (

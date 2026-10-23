@@ -87,8 +87,20 @@ function reduceStartSession(state: PokerState): ReducerResult<PokerState, PokerE
 }
 
 function reduceStartHand(state: PokerState): ReducerResult<PokerState, PokerEvent> {
+  // Automatically sit out seated players who have busted (0 stack) until rebuy
+  const sittingOut = new Set(state.sittingOut);
+  for (const p of state.participants.values()) {
+    if (p.seat !== null) {
+      const currentStack =
+        state.stacks.get(p.id) ?? state.players.get(p.id)?.stack ?? (state.config.startingStack ?? state.config.minBuyIn);
+      if (currentStack <= 0) {
+        sittingOut.add(p.id);
+      }
+    }
+  }
+
   const eligible = Array.from(state.participants.values()).filter(
-    (p) => p.seat !== null && !state.sittingOut.has(p.id)
+    (p) => p.seat !== null && !sittingOut.has(p.id)
   );
 
   if (eligible.length < 2) {
@@ -113,7 +125,8 @@ function reduceStartHand(state: PokerState): ReducerResult<PokerState, PokerEven
   const players = new Map<string, PokerPlayerState>();
   for (const p of eligible) {
     const seat = p.seat as SeatNumber;
-    const currentStack = state.players.get(p.id)?.stack ?? state.config.minBuyIn;
+    const currentStack =
+      state.stacks.get(p.id) ?? state.players.get(p.id)?.stack ?? (state.config.startingStack ?? state.config.minBuyIn);
     players.set(p.id, {
       id: p.id,
       seatNumber: seat,
@@ -210,6 +223,7 @@ function reduceStartHand(state: PokerState): ReducerResult<PokerState, PokerEven
     lastFullRaiseSize: state.config.bigBlind,
     toActPlayerId: firstToAct,
     players,
+    sittingOut,
     winners: null,
     actionDeadline,
     handSummaryDeadline: null,
@@ -894,7 +908,7 @@ function reduceRebuy(
   const player = state.players.get(playerId);
   if (!player) return ok(state, []);
 
-  const rebuyAmount = amount ?? state.config.minBuyIn;
+  const rebuyAmount = amount ?? (state.config.rebuyAmount ?? 10000);
   player.stack += rebuyAmount;
 
   const totalBuyIns = new Map(state.totalBuyIns);

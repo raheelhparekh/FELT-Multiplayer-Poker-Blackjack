@@ -183,4 +183,46 @@ describe("Poker ViewFor & Hidden Information Contract (§6, §12.5)", () => {
     const net = alicePlayer.stack - (view.totalBuyIns?.["alice"] ?? 0);
     expect(net).toBe(700);
   });
+
+  it("CRITICAL SAFEGUARD: does NOT reveal winner's cards when opponent folds (uncontested pot)", () => {
+    const { state } = setupGame();
+    const { state: s1 } = reduce(state, { type: "poker:startHand" });
+
+    // In heads-up preflop, button (Alice) acts first. Alice raises to 100.
+    const { state: s2 } = reduce(s1, { type: "poker:raise", playerId: "alice", to: 100 });
+    // Bob folds
+    const { state: s3 } = reduce(s2, { type: "poker:fold", playerId: "bob" });
+
+    // Hand ends by fold: phase is hand_summary
+    expect(s3.phase).toBe("hand_summary");
+    expect(s3.winners?.[0]?.playerId).toBe("alice");
+    expect(s3.winners?.[0]?.handName).toBe("All other players folded");
+
+    // Bob view: Alice's cards MUST be hidden!
+    const bobView = viewFor(s3, "bob");
+    const aliceInBobView = bobView.players.find((p) => p.id === "alice")!;
+    expect(aliceInBobView.cards[0]!.hidden).toBe(true);
+    expect(aliceInBobView.cards[1]!.hidden).toBe(true);
+    expect("card" in aliceInBobView.cards[0]!).toBe(false);
+
+    // Spectator view: Alice's cards MUST also be hidden!
+    const specView = viewFor(s3, "spectator-sam");
+    const aliceInSpecView = specView.players.find((p) => p.id === "alice")!;
+    expect(aliceInSpecView.cards[0]!.hidden).toBe(true);
+    expect(aliceInSpecView.cards[1]!.hidden).toBe(true);
+
+    // Alice herself CAN see her own cards
+    const aliceView = viewFor(s3, "alice");
+    const aliceInAliceView = aliceView.players.find((p) => p.id === "alice")!;
+    expect(aliceInAliceView.cards[0]!.hidden).toBe(false);
+
+    // If Alice explicitly chooses to show cards:
+    const { state: s4 } = reduce(s3, { type: "poker:showCards", playerId: "alice" });
+    const bobViewAfterShow = viewFor(s4, "bob");
+    const aliceInBobViewAfter = bobViewAfterShow.players.find((p) => p.id === "alice")!;
+    expect(aliceInBobViewAfter.cards[0]!.hidden).toBe(false);
+    if (!aliceInBobViewAfter.cards[0]!.hidden) {
+      expect(aliceInBobViewAfter.cards[0]!.card).toBeDefined();
+    }
+  });
 });

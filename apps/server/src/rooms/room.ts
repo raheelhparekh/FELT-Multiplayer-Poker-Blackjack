@@ -243,11 +243,16 @@ export class Room {
     let initialStack: number;
     if (this.gameType === "poker") {
       const pokerCfg = this.config as unknown as PokerConfig;
-      const minBuyIn = pokerCfg.minBuyIn ?? 200;
-      const maxBuyIn = pokerCfg.maxBuyIn ?? 20000;
-      const rawBuyIn =
-        params.buyIn && params.buyIn > 0 ? params.buyIn : (this.config.startingStack ?? minBuyIn);
-      initialStack = Math.min(maxBuyIn, Math.max(minBuyIn, rawBuyIn));
+      const configuredStack = (pokerCfg as any).startingStack ?? (this.config as any).startingStack;
+      if (configuredStack && configuredStack > 0) {
+        initialStack = configuredStack;
+      } else {
+        const minBuyIn = pokerCfg.minBuyIn ?? 200;
+        const maxBuyIn = pokerCfg.maxBuyIn ?? 20000;
+        const rawBuyIn =
+          params.buyIn && params.buyIn > 0 ? params.buyIn : minBuyIn;
+        initialStack = Math.min(maxBuyIn, Math.max(minBuyIn, rawBuyIn));
+      }
     } else {
       const MAX_STARTING_BUY_IN = 20000;
       const rawBuyIn = params.buyIn && params.buyIn > 0 ? params.buyIn : this.config.startingStack;
@@ -659,6 +664,7 @@ export class Room {
       if (!pokerState.players) {
         pokerState.players = new Map();
       }
+      const isMidHandJoin = pokerState.phase !== "lobby";
       if (!pokerState.players.has(playerId)) {
         pokerState.players.set(playerId, {
           id: playerId,
@@ -667,14 +673,18 @@ export class Room {
           stack: initialStack,
           committedThisRound: 0,
           committedThisHand: 0,
-          hasFolded: false,
+          hasFolded: isMidHandJoin,
           isAllIn: false,
-          actedThisRound: false,
+          actedThisRound: isMidHandJoin,
           hasSeenCards: false,
         });
       } else {
         const existing = pokerState.players.get(playerId);
         existing.seatNumber = seatNum;
+        if (isMidHandJoin && (!existing.holeCards || existing.holeCards.length === 0)) {
+          existing.hasFolded = true;
+          existing.actedThisRound = true;
+        }
       }
       if (!pokerState.stacks) pokerState.stacks = new Map();
       pokerState.stacks.set(playerId, initialStack);
@@ -1207,8 +1217,9 @@ export class Room {
       }
     }
 
+    const defaultRebuy = this.gameType === "poker" ? 10000 : this.config.rebuyAmount;
     const rawRebuy =
-      amount && amount > 0 ? amount : pendingTx ? pendingTx.amount : this.config.rebuyAmount;
+      amount && amount > 0 ? amount : pendingTx ? pendingTx.amount : ((this.config as any).rebuyAmount ?? defaultRebuy);
     const rebuyAmount = Math.min(20000, Math.max(100, rawRebuy));
 
     const target = this.participants.get(targetId);
@@ -1944,7 +1955,8 @@ export class Room {
         }
         const p = this.participants.get(playerId);
         const name = p ? p.displayName : playerId;
-        const rawReq = action.amount && action.amount > 0 ? action.amount : this.config.rebuyAmount;
+        const defaultRebuy = this.gameType === "poker" ? 10000 : this.config.rebuyAmount;
+        const rawReq = action.amount && action.amount > 0 ? action.amount : ((this.config as any).rebuyAmount ?? defaultRebuy);
         const reqAmount = Math.min(MAX_CHIP_REQUEST, Math.max(100, rawReq));
         const currentStack = this.state.stacks.get(playerId) ?? 0;
         const roundNum = (this.state as any).handNumber ?? this.state.roundNumber ?? 0;

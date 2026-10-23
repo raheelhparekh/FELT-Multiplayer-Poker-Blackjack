@@ -408,4 +408,129 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     alice.disconnect();
     bob.disconnect();
   });
+
+  it("CRITICAL INFORMATION LEAK SAFEGUARD: fold win does NOT leak winner hole cards to opponent across WebSocket", async () => {
+    const alice = new TestClient("Alice");
+    const bob = new TestClient("Bob");
+
+    await alice.connect(serverUrl);
+    await bob.connect(serverUrl);
+
+    const { roomCode } = await alice.createRoom({
+      displayName: "Alice",
+      avatarId: "av-alice",
+      gameType: "poker",
+      buyIn: 1000,
+    });
+
+    await bob.joinRoom({ code: roomCode, displayName: "Bob", avatarId: "av-bob", buyIn: 1000 });
+
+    await alice.sit(1);
+    await bob.sit(2);
+
+    await alice.waitForSnapshot((s: any) => (s.players ?? []).length === 2);
+    await alice.startSession();
+
+    // Wait until hand starts
+    await Promise.all([
+      alice.waitForSnapshot((s: any) => s.phase === "betting" && s.handNumber === 1),
+      bob.waitForSnapshot((s: any) => s.phase === "betting" && s.handNumber === 1),
+    ]);
+
+    // In heads-up preflop, button (SB) acts first.
+    // Determine who has the turn
+    const initialSnap = alice.latestSnapshot as ClientPokerGameView;
+    const toActId = initialSnap.toActPlayerId!;
+    const firstClient = toActId === alice.playerId ? alice : bob;
+    const otherClient = toActId === alice.playerId ? bob : alice;
+
+    // First player folds immediately
+    await firstClient.pokerFold();
+
+    // Wait for hand_summary on both clients
+    const summarySnapOther = await otherClient.waitForSnapshot((s: any) => s.phase === "hand_summary");
+    const summarySnapFirst = await firstClient.waitForSnapshot((s: any) => s.phase === "hand_summary");
+
+    // The winner is otherClient (since firstClient folded)
+    expect(summarySnapOther.winners?.[0]?.playerId).toBe(otherClient.playerId);
+    expect(summarySnapOther.winners?.[0]?.handName).toBe("All other players folded");
+
+    // CRITICAL SECURITY ASSERTION:
+    // firstClient (the folded player) CANNOT see the winner's hole cards!
+    const winnerPlayerInFirstClientView = summarySnapFirst.players.find((p) => p.id === otherClient.playerId)!;
+    expect(winnerPlayerInFirstClientView.cards.length).toBe(2);
+    expect(winnerPlayerInFirstClientView.cards[0].hidden).toBe(true);
+    expect(winnerPlayerInFirstClientView.cards[0].card).toBeUndefined();
+    expect(winnerPlayerInFirstClientView.cards[1].hidden).toBe(true);
+    expect(winnerPlayerInFirstClientView.cards[1].card).toBeUndefined();
+
+    // Verify zero leaks in scanForPokerLeaks
+    expect(scanForPokerLeaks(summarySnapFirst)).toEqual([]);
+
+    alice.disconnect();
+    bob.disconnect();
+  });
+
+  it("mid-hand joiner does NOT stall the hand or get assigned a turn", async () => {
+    const alice = new TestClient("Alice");
+    const bob = new TestClient("Bob");
+    const charlie = new TestClient("Charlie"); // joins mid-hand
+
+    await alice.connect(serverUrl);
+    await bob.connect(serverUrl);
+    await charlie.connect(serverUrl);
+
+    const { roomCode } = await alice.createRoom({
+      displayName: "Alice",
+      avatarId: "av-alice",
+      gameType: "poker",
+      buyIn: 1000,
+    });
+
+    await bob.joinRoom({ code: roomCode, displayName: "Bob", avatarId: "av-bob", buyIn: 1000 });
+
+    await alice.sit(1);
+    await bob.sit(2);
+
+    await alice.waitForSnapshot((s: any) => (s.players ?? []).length === 2);
+    await alice.startSession();
+
+    // Wait until hand is in progress (preflop betting)
+    await Promise.all([
+      alice.waitForSnapshot((s: any) => s.phase === "betting" && s.handNumber === 1),
+      bob.waitForSnapshot((s: any) => s.phase === "betting" && s.handNumber === 1),
+    ]);
+
+    // Charlie joins and takes a seat mid-hand
+    await charlie.joinRoom({ code: roomCode, displayName: "Charlie", avatarId: "av-charlie", buyIn: 1000 });
+    await charlie.sit(3);
+
+    // Wait for Charlie to appear in state
+    await alice.waitForSnapshot((s: any) => (s.players ?? []).length === 3);
+
+    // Charlie should be marked hasFolded=true with no cards (mid-hand joiner)
+    const snapForAlice = alice.latestSnapshot as ClientPokerGameView;
+    const charlieInView = snapForAlice.players.find((p) => p.id === charlie.playerId);
+    expect(charlieInView).toBeDefined();
+    expect(charlieInView!.hasFolded).toBe(true);
+    expect(charlieInView!.cards.length).toBe(0);
+
+    // Charlie must NOT be the toActPlayerId — the hand must continue normally
+    expect(snapForAlice.toActPlayerId).not.toBe(charlie.playerId);
+
+    // The hand must still be playable: current player acts (fold to end hand quickly)
+    const toActId = snapForAlice.toActPlayerId!;
+    const actingClient = toActId === alice.playerId ? alice : bob;
+    await actingClient.pokerFold();
+
+    // Hand must resolve to hand_summary without stalling
+    await Promise.all([
+      alice.waitForSnapshot((s: any) => s.phase === "hand_summary"),
+      bob.waitForSnapshot((s: any) => s.phase === "hand_summary"),
+    ]);
+
+    alice.disconnect();
+    bob.disconnect();
+    charlie.disconnect();
+  });
 });

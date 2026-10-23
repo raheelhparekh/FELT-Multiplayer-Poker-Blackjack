@@ -63,13 +63,22 @@ export function buildDeck(): Card[] {
   return cards;
 }
 
-/** Secure Fisher-Yates shuffle returning a new shuffled array. */
+/** Secure Fisher-Yates shuffle with rejection sampling to eliminate modulo bias. */
 export function shuffleDeck(deck: Card[] = buildDeck()): Card[] {
   const cards = [...deck];
+  const randomBuffer = new Uint32Array(1);
+
   for (let i = cards.length - 1; i > 0; i--) {
-    const randomBuffer = new Uint32Array(1);
-    crypto.getRandomValues(randomBuffer);
-    const j = randomBuffer[0]! % (i + 1);
+    const range = i + 1;
+    const maxAllowed = 0xffffffff - (0xffffffff % range);
+
+    let rand: number;
+    do {
+      crypto.getRandomValues(randomBuffer);
+      rand = randomBuffer[0]!;
+    } while (rand >= maxAllowed);
+
+    const j = rand % range;
     const temp = cards[i]!;
     cards[i] = cards[j]!;
     cards[j] = temp;

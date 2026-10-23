@@ -126,6 +126,21 @@ describe("Poker Betting Engine (§5.4, §5.5, §12.2)", () => {
       expect(legal.minRaiseTo).toBe(240);
       expect(legal.maxRaiseTo).toBe(240);
     });
+
+    it("POKER RULE SAFEGUARD (TDA §43): short all-in under-raise does NOT reopen betting to player who already acted", () => {
+      // Player 1 originally bet 100 (actedThisRound = true, committedThisRound = 100)
+      // Player 2 went all-in for 120 (a short raise of 20, less than min full raise of 100)
+      // Action returns to Player 1 with currentBet = 120, lastFullRaiseSize = 100
+      const p1 = makePlayer("p1", 1, 880, 100, true);
+      const legal = computeLegalActions("p1", p1, 120, 100, 50);
+
+      // Player 1 CANNOT raise!
+      expect(legal.canRaise).toBe(false);
+      // Player 1 can call the remaining 20 chips or fold
+      expect(legal.canCall).toBe(true);
+      expect(legal.callAmount).toBe(20);
+      expect(legal.canFold).toBe(true);
+    });
   });
 
   describe("Round Completion (§5.5)", () => {

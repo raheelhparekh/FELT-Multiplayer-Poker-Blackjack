@@ -55,7 +55,7 @@ export const PokerCommunityArea: React.FC<PokerCommunityAreaProps> = ({
       </div>
 
       {/* Community Cards Slots */}
-      <div className="flex items-center gap-2 sm:gap-3 p-2 bg-emerald-950/40 border border-emerald-800/40 rounded-2xl shadow-inner min-h-[90px] sm:min-h-[110px]">
+      <div className="flex items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 bg-emerald-950/40 border border-emerald-800/40 rounded-2xl shadow-inner min-h-[72px] sm:min-h-[100px]">
         <AnimatePresence>
           {communityCards.map((card, idx) => (
             <motion.div
@@ -70,7 +70,10 @@ export const PokerCommunityArea: React.FC<PokerCommunityAreaProps> = ({
               }}
               className="relative shadow-xl"
             >
-              <CardView cardSlot={{ hidden: false, card }} />
+              <CardView
+                cardSlot={{ hidden: false, card }}
+                className="!w-10 !h-15 sm:!w-14 sm:!h-20 text-[10px] sm:text-xs"
+              />
             </motion.div>
           ))}
         </AnimatePresence>
@@ -79,9 +82,9 @@ export const PokerCommunityArea: React.FC<PokerCommunityAreaProps> = ({
         {Array.from({ length: emptySlotsCount }).map((_, idx) => (
           <div
             key={`empty-slot-${idx}`}
-            className="w-14 h-20 sm:w-16 sm:h-24 rounded-lg border-2 border-dashed border-emerald-800/40 bg-black/20 flex items-center justify-center opacity-40"
+            className="w-10 h-15 sm:w-14 sm:h-20 rounded-md sm:rounded-lg border-2 border-dashed border-emerald-800/40 bg-black/20 flex items-center justify-center opacity-40"
           >
-            <span className="text-emerald-700/60 font-serif text-sm">♦</span>
+            <span className="text-emerald-700/60 font-serif text-xs sm:text-sm">♦</span>
           </div>
         ))}
       </div>
