@@ -118,6 +118,23 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       );
     }
 
+    const isSittingOut = view.sittingOut?.includes(myPlayerId) ?? false;
+    if (isSittingOut) {
+      return (
+        <div className="w-full max-w-md mx-auto p-3 bg-black/80 rounded-2xl border border-zinc-700/60 text-center shadow-lg">
+          <span className="text-xs text-zinc-200 font-bold block mb-0.5">
+            Sitting out this round
+          </span>
+          <span className="text-[11px] text-emerald-400/70 font-mono">
+            Waiting for the next round...{" "}
+            {timer.seconds !== null && (
+              <span className="text-gold-300 font-bold font-mono">({timer.formatted})</span>
+            )}
+          </span>
+        </div>
+      );
+    }
+
     const myStack = view.stacks[myPlayerId] ?? 0;
     const lockedAmount = view.lockedBets?.[myPlayerId] ?? 0;
     const isLocked = Boolean(view.lockedBets?.[myPlayerId]);
@@ -263,18 +280,27 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     );
   }
 
+  // Waiting seated player during active deal / turns / settlement phases
+  if (
+    isSeated &&
+    myHands.length === 0 &&
+    (view.phase === "dealing" ||
+      view.phase === "peek" ||
+      view.phase === "player_turns" ||
+      view.phase === "dealer_turn" ||
+      view.phase === "settlement")
+  ) {
+    return (
+      <div className="w-full max-w-sm mx-auto p-2.5 bg-black/80 rounded-2xl border border-gold-400/40 text-center shadow">
+        <span className="text-xs text-gold-300 font-semibold">
+          Seat #{myParticipant?.seat} reserved • You will join when the next round begins!
+        </span>
+      </div>
+    );
+  }
+
   // 3. Player Turns Phase
   if (view.phase === "player_turns") {
-    if (isSeated && myHands.length === 0) {
-      return (
-        <div className="w-full max-w-sm mx-auto p-2.5 bg-black/80 rounded-2xl border border-gold-400/40 text-center shadow">
-          <span className="text-xs text-gold-300 font-semibold">
-            Seat #{myParticipant?.seat} reserved • You will join when the next round begins!
-          </span>
-        </div>
-      );
-    }
-
     if (!isMyTurn || !activeHand) {
       const activePlayer = view.participants.find(
         (p: Participant) => p.id === activeHand?.playerId,

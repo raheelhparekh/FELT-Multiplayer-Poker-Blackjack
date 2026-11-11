@@ -28,23 +28,34 @@ export const HeaderBar: React.FC = () => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const isPoker = currentView?.gameType === "poker";
+  const phaseStr = currentView?.phase as string | undefined;
+
   // Active deadline based on current game phase
   const currentDeadline =
-    currentView?.phase === "betting"
-      ? currentView.betDeadline
-      : currentView?.phase === "insurance"
-        ? currentView.insuranceDeadline
-        : currentView?.phase === "player_turns"
-          ? currentView.actionDeadline
-          : null;
+    phaseStr === "betting"
+      ? isPoker
+        ? (currentView as any).actionDeadline
+        : currentView?.betDeadline
+      : phaseStr === "insurance"
+        ? currentView?.insuranceDeadline
+        : phaseStr === "player_turns"
+          ? currentView?.actionDeadline
+          : phaseStr === "hand_summary"
+            ? (currentView as any).handSummaryDeadline
+            : null;
+
+  const totalTimerSec = isPoker
+    ? ((currentView?.config as any)?.actionTimerSec ?? (currentView?.config as any)?.actionTimer ?? 30)
+    : 30;
 
   const timer = useCountdownTimer({
     deadline: currentDeadline,
     isPaused: currentView?.isPaused,
     pausedRemainingMs: currentView?.pausedRemainingMs,
-    totalDurationSec: 30,
+    totalDurationSec: totalTimerSec,
     playTickAudio: false,
-    resetKey: `${currentView?.phase}-${currentView?.activeHandId ?? ""}-${currentDeadline ?? 0}`,
+    resetKey: `${phaseStr}-${currentView?.activeHandId ?? (currentView as any)?.toActPlayerId ?? ""}-${currentDeadline ?? 0}`,
   });
 
   useEffect(() => {
@@ -57,7 +68,6 @@ export const HeaderBar: React.FC = () => {
 
   const isHost = currentView.hostId === myPlayerId;
   const phase = currentView.phase as string;
-  const isPoker = currentView.gameType === "poker";
   const round = currentView.roundNumber ?? (currentView as any).handNumber ?? 0;
   const code = roomCode || currentView.roomCode;
 
@@ -559,7 +569,7 @@ export const HeaderBar: React.FC = () => {
       {errorMessage && (
         <aside
           aria-label="Error Notification"
-          className="fixed top-[5.5rem] sm:top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 bg-rose-950/95 border border-rose-500/80 text-rose-100 text-xs font-semibold rounded-2xl shadow-2xl backdrop-blur-md animate-bounce max-w-[90vw] text-center"
+          className="fixed top-[5.5rem] sm:top-16 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2 px-4 py-2 bg-rose-950/95 border border-rose-500/80 text-rose-100 text-xs font-semibold rounded-2xl shadow-2xl backdrop-blur-md animate-bounce max-w-[90vw] text-center"
         >
           <span>⚠️ {errorMessage}</span>
           <button

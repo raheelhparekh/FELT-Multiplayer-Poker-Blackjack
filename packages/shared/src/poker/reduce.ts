@@ -39,8 +39,6 @@ export function reduce(state: PokerState, action: PokerAction): ReducerResult<Po
         return reduceAllIn(state, action.playerId);
       case "poker:showCards":
         return reduceShowCards(state, action.playerId);
-      case "poker:seeCards":
-        return reduceSeeCards(state, action.playerId);
       case "poker:dealNextStreet":
         return reduceDealNextStreet(state);
       case "poker:nextHand":
@@ -137,7 +135,6 @@ function reduceStartHand(state: PokerState): ReducerResult<PokerState, PokerEven
       hasFolded: false,
       isAllIn: currentStack === 0,
       actedThisRound: false,
-      hasSeenCards: false,
     });
   }
 
@@ -817,26 +814,6 @@ function reduceShowCards(state: PokerState, playerId: string): ReducerResult<Pok
   ]);
 }
 
-function reduceSeeCards(state: PokerState, playerId: string): ReducerResult<PokerState, PokerEvent> {
-  const player = state.players.get(playerId);
-  if (!player) return ok(state, []);
-  if (player.hasSeenCards) return ok(state, []);
-
-  player.hasSeenCards = true;
-  return ok(
-    {
-      ...state,
-      seq: state.seq + 1,
-    },
-    [
-      {
-        type: "playerSeenCards",
-        playerId,
-      },
-    ]
-  );
-}
-
 function reduceDealNextStreet(state: PokerState): ReducerResult<PokerState, PokerEvent> {
   return advanceStreet(state, []);
 }
@@ -873,24 +850,37 @@ function reduceAdjustChips(
   amount: number
 ): ReducerResult<PokerState, PokerEvent> {
   const player = state.players.get(targetId);
-  if (!player) return ok(state, []);
+  const currentBalance = player?.stack ?? state.stacks.get(targetId) ?? 0;
 
-  let newBalance = player.stack;
+  let newBalance = currentBalance;
   if (op === "set") newBalance = amount;
   else if (op === "add") newBalance += amount;
   else if (op === "subtract") newBalance = Math.max(0, newBalance - amount);
 
-  player.stack = newBalance;
+  if (player) {
+    player.stack = newBalance;
+  }
 
-  return ok(state, [
-    {
-      type: "chipsAdjusted",
-      target: targetId,
-      op,
-      amount,
-      newBalance,
-    },
-  ]);
+  const stacks = new Map(state.stacks);
+  stacks.set(targetId, newBalance);
+
+  const sittingOut = new Set(state.sittingOut);
+  if (currentBalance <= 0 && newBalance > 0) {
+    sittingOut.delete(targetId);
+  }
+
+  return ok(
+    { ...state, stacks, sittingOut },
+    [
+      {
+        type: "chipsAdjusted",
+        target: targetId,
+        op,
+        amount,
+        newBalance,
+      },
+    ]
+  );
 }
 
 function reduceUpdateConfig(
@@ -906,10 +896,13 @@ function reduceRebuy(
   amount?: number
 ): ReducerResult<PokerState, PokerEvent> {
   const player = state.players.get(playerId);
-  if (!player) return ok(state, []);
+  const prevStack = player?.stack ?? state.stacks.get(playerId) ?? 0;
 
   const rebuyAmount = amount ?? (state.config.rebuyAmount ?? 10000);
-  player.stack += rebuyAmount;
+  const newStack = prevStack + rebuyAmount;
+  if (player) {
+    player.stack = newStack;
+  }
 
   const totalBuyIns = new Map(state.totalBuyIns);
   totalBuyIns.set(playerId, (totalBuyIns.get(playerId) ?? 0) + rebuyAmount);
@@ -918,7 +911,12 @@ function reduceRebuy(
   rebuys.set(playerId, (rebuys.get(playerId) ?? 0) + rebuyAmount);
 
   const stacks = new Map(state.stacks);
-  stacks.set(playerId, player.stack);
+  stacks.set(playerId, newStack);
 
-  return ok({ ...state, totalBuyIns, rebuys, stacks }, []);
+  const sittingOut = new Set(state.sittingOut);
+  if (prevStack <= 0 && newStack > 0) {
+    sittingOut.delete(playerId);
+  }
+
+  return ok({ ...state, totalBuyIns, rebuys, stacks, sittingOut }, []);
 }

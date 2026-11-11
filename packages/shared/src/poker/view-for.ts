@@ -17,7 +17,8 @@ export interface ClientPokerPlayerView {
   cards: ClientCard[];
   handStrengthName?: string | undefined;
   isConnected: boolean;
-  hasSeenCards?: boolean;
+  isSittingOut?: boolean | undefined;
+  isWaiting?: boolean | undefined;
 }
 
 export interface ClientPokerGameView {
@@ -44,6 +45,7 @@ export interface ClientPokerGameView {
   totalBuyIns?: Record<string, number>;
   initialBuyIns?: Record<string, number>;
   rebuys?: Record<string, number>;
+  sittingOut?: string[] | undefined;
   config: import("./config.js").PokerConfig;
   hostId?: string | undefined;
   dealerId?: string | null | undefined;
@@ -53,6 +55,8 @@ export interface ClientPokerGameView {
   actionDeadline: number | null;
   handSummaryDeadline: number | null;
   isPaused: boolean;
+  pausedRemainingMs?: number | null | undefined;
+  waitingForReconnect?: string | null | undefined;
 
   winners: HandWinner[] | null;
   handHistory: PokerState["handHistory"];
@@ -60,6 +64,7 @@ export interface ClientPokerGameView {
 
   transactions?: PlayerTransaction[] | undefined;
   pendingChipAdjustmentPlayers?: string[] | undefined;
+  pendingUnseatPlayers?: string[] | undefined;
 }
 
 /**
@@ -93,6 +98,9 @@ export function viewFor(state: PokerState, viewerId: string): ClientPokerGameVie
       handStrengthName = best.name;
     }
 
+    const isSittingOut = state.sittingOut?.has(pid) ?? false;
+    const isWaiting = isSittingOut || (player.hasFolded && player.holeCards.length === 0);
+
     clientPlayers.push({
       id: pid,
       displayName: participant?.displayName ?? pid,
@@ -107,8 +115,32 @@ export function viewFor(state: PokerState, viewerId: string): ClientPokerGameVie
       cards,
       handStrengthName,
       isConnected: participant?.isConnected ?? false,
-      hasSeenCards: Boolean(player.hasSeenCards),
+      isSittingOut,
+      isWaiting,
     });
+  }
+
+  // Ensure seated participants who are currently sitting out / waiting for next hand
+  // still appear at their seat instead of looking like empty seats or spectators.
+  for (const participant of state.participants.values()) {
+    if (participant.seat !== null && !state.players.has(participant.id)) {
+      clientPlayers.push({
+        id: participant.id,
+        displayName: participant.displayName,
+        avatarId: participant.avatarId,
+        seatNumber: participant.seat,
+        stack: state.stacks.get(participant.id) ?? 0,
+        committedThisRound: 0,
+        committedThisHand: 0,
+        hasFolded: true,
+        isAllIn: false,
+        isTurn: false,
+        cards: [],
+        isConnected: participant.isConnected,
+        isSittingOut: state.sittingOut?.has(participant.id) ?? false,
+        isWaiting: true,
+      });
+    }
   }
 
   // Legal actions for the viewer
@@ -146,6 +178,17 @@ export function viewFor(state: PokerState, viewerId: string): ClientPokerGameVie
     }
   }
 
+  const rawPaused = state.pausedRemainingMs;
+  const pausedRemainingMs = rawPaused
+    ? typeof rawPaused === "number"
+      ? rawPaused
+      : state.phase === "betting"
+        ? (rawPaused.action ?? null)
+        : state.phase === "hand_summary"
+          ? (rawPaused.handSummary ?? null)
+          : null
+    : null;
+
   return {
     roomCode: state.roomCode,
     gameType: "poker",
@@ -167,6 +210,7 @@ export function viewFor(state: PokerState, viewerId: string): ClientPokerGameVie
     totalBuyIns: Object.fromEntries(state.totalBuyIns ?? []),
     initialBuyIns: Object.fromEntries(state.initialBuyIns ?? []),
     rebuys: Object.fromEntries(state.rebuys ?? []),
+    sittingOut: Array.from(state.sittingOut ?? []),
     config: state.config,
     hostId,
     dealerId: null,
@@ -175,6 +219,8 @@ export function viewFor(state: PokerState, viewerId: string): ClientPokerGameVie
     actionDeadline: state.actionDeadline,
     handSummaryDeadline: state.handSummaryDeadline,
     isPaused: state.isPaused,
+    pausedRemainingMs,
+    waitingForReconnect: state.waitingForReconnect ?? null,
     winners: state.winners,
     handHistory: state.handHistory,
     tableStatusMessage: state.tableStatusMessage,

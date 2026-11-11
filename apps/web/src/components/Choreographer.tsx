@@ -40,7 +40,9 @@ export const Choreographer: React.FC<ChoreographerProps> = ({ showOutcomes = tru
 
     // Phase transition sounds
     if (prevPhase !== phase) {
-      if (phase === "dealing") {
+      if (phase === "betting" || phase === "lobby") {
+        prevRoundRef.current = 0;
+      } else if (phase === "dealing") {
         soundEngine.play("card_deal");
       } else if (phase === "dealer_turn") {
         soundEngine.play("card_flip");

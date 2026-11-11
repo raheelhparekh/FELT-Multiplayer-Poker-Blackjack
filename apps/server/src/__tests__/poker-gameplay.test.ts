@@ -234,7 +234,7 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     bob.disconnect();
   });
 
-  it("synchronizes seeCards across opponents so other players know they are seen", async () => {
+  it("deals hole cards immediately face-up to owner without blind card logic", async () => {
     const alice = new TestClient("Alice");
     const bob = new TestClient("Bob");
 
@@ -256,31 +256,18 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     await alice.waitForSnapshot((s: any) => (s.players ?? []).length === 2);
     await alice.startSession();
 
-    await Promise.all([
+    const [aliceSnap, bobSnap] = await Promise.all([
       alice.waitForSnapshot((s: any) => s.phase === "betting"),
       bob.waitForSnapshot((s: any) => s.phase === "betting"),
     ]);
 
-    // Initially, Bob sees Alice as NOT having seen cards (hasSeenCards: false)
-    const bobSnap1 = bob.latestSnapshot as ClientPokerGameView;
-    const aliceInBobView1 = bobSnap1.players.find((p) => p.id === alice.playerId)!;
-    expect(aliceInBobView1.hasSeenCards).toBe(false);
+    const aliceSelf = (aliceSnap as ClientPokerGameView).players.find((p) => p.id === alice.playerId)!;
+    expect(aliceSelf.cards[0]!.hidden).toBe(false);
+    expect("hasSeenCards" in aliceSelf).toBe(false);
 
-    // Alice sees her cards
-    await alice.pokerSeeCards();
-
-    // Bob receives a snapshot update where Alice is now seen!
-    const bobSnap2 = await bob.waitForSnapshot((s: any) => {
-      const p = s.players.find((pl: any) => pl.id === alice.playerId);
-      return p && p.hasSeenCards === true;
-    });
-
-    const aliceInBobView2 = bobSnap2.players.find((p: any) => p.id === alice.playerId)!;
-    expect(aliceInBobView2.hasSeenCards).toBe(true);
-
-    // And Alice's actual cards are STILL redacted from Bob for anti-cheat
-    expect(aliceInBobView2.cards[0].hidden).toBe(true);
-    expect(aliceInBobView2.cards[0].card).toBeUndefined();
+    const aliceInBobView = (bobSnap as ClientPokerGameView).players.find((p) => p.id === alice.playerId)!;
+    expect(aliceInBobView.cards[0]!.hidden).toBe(true);
+    expect("card" in aliceInBobView.cards[0]!).toBe(false);
 
     alice.disconnect();
     bob.disconnect();
@@ -290,7 +277,7 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     const alice = new TestClient("Alice");
     await alice.connect(serverUrl);
 
-    const { roomCode } = await alice.createRoom({
+    await alice.createRoom({
       displayName: "Alice",
       avatarId: "av-alice",
       gameType: "poker",
@@ -532,5 +519,180 @@ describe("Poker Server Gameplay & Hidden Info Audit", () => {
     alice.disconnect();
     bob.disconnect();
     charlie.disconnect();
+  });
+
+  it("allows seat switching between hands and when waiting, and host unseating between rounds or queued mid-hand", async () => {
+    const alice = new TestClient("Alice");
+    const bob = new TestClient("Bob");
+    const charlie = new TestClient("Charlie");
+
+    await alice.connect(serverUrl);
+    await bob.connect(serverUrl);
+    await charlie.connect(serverUrl);
+
+    const { roomCode } = await alice.createRoom({
+      displayName: "Alice",
+      avatarId: "av-alice",
+      gameType: "poker",
+      config: { autoNextHandDelaySec: 10 },
+    });
+
+    await bob.joinRoom({ code: roomCode, displayName: "Bob", avatarId: "av-bob" });
+    await charlie.joinRoom({ code: roomCode, displayName: "Charlie", avatarId: "av-charlie" });
+
+    await alice.sit(1);
+    await bob.sit(2);
+    await alice.waitForSnapshot((s: any) => (s.players ?? []).length === 2);
+    await alice.startSession();
+    await alice.waitForSnapshot((s: any) => s.phase === "betting" && s.handNumber === 1);
+
+    // Charlie joins mid-hand (waiting mode) at seat 3, then switches to seat 5 while waiting
+    await charlie.sit(3);
+    await charlie.waitForSnapshot((s: any) =>
+      s.participants.some((p: any) => p.id === charlie.playerId && p.seat === 3),
+    );
+    await charlie.sit(5);
+    const snapMoved = await charlie.waitForSnapshot((s: any) =>
+      s.participants.some((p: any) => p.id === charlie.playerId && p.seat === 5),
+    );
+    expect(snapMoved.players.find((p: any) => p.id === charlie.playerId)?.seatNumber).toBe(5);
+
+    // Active player cannot switch seats mid-hand
+    await expect(alice.sit(4)).rejects.toThrow(/active hand/i);
+
+    // Host queues unseat of Bob mid-hand
+    await alice.assignSeat(bob.playerId, null);
+    const queuedSnap = await alice.waitForSnapshot((s: any) =>
+      (s.pendingUnseatPlayers ?? []).includes(bob.playerId),
+    );
+    expect(queuedSnap.pendingUnseatPlayers).toContain(bob.playerId);
+
+    // Finish hand 1 (fold) -> Bob should be automatically unseated upon entering hand_summary!
+    const toActId = (alice.latestSnapshot as ClientPokerGameView).toActPlayerId!;
+    await (toActId === alice.playerId ? alice : bob).pokerFold();
+
+    const summarySnap = await alice.waitForSnapshot(
+      (s: any) =>
+        s.phase === "hand_summary" &&
+        s.participants.find((p: any) => p.id === bob.playerId)?.seat === null,
+    );
+    expect(summarySnap.participants.find((p: any) => p.id === bob.playerId)?.seat).toBeNull();
+
+    // Between rounds (hand_summary), Charlie can switch from seat 5 to seat 2, and Host can unseat Charlie immediately
+    await charlie.sit(2);
+    await charlie.waitForSnapshot((s: any) =>
+      s.participants.some((p: any) => p.id === charlie.playerId && p.seat === 2),
+    );
+    await alice.assignSeat(charlie.playerId, null);
+    const afterUnseatSnap = await alice.waitForSnapshot(
+      (s: any) => s.participants.find((p: any) => p.id === charlie.playerId)?.seat === null,
+    );
+    expect(afterUnseatSnap.participants.find((p: any) => p.id === charlie.playerId)?.seat).toBeNull();
+
+    alice.disconnect();
+    bob.disconnect();
+    charlie.disconnect();
+  });
+
+  it("reverses poker hand mid-hand AND in hand_summary with exact chip conservation, pause/resume, endSession & closeTable", async () => {
+    const alice = new TestClient("Alice");
+    const bob = new TestClient("Bob");
+
+    await alice.connect(serverUrl);
+    await bob.connect(serverUrl);
+
+    const { roomCode } = await alice.createRoom({
+      displayName: "Alice",
+      avatarId: "av-alice",
+      gameType: "poker",
+      config: { actionTimerSec: 1, autoNextHandDelaySec: 5 },
+    });
+    await bob.joinRoom({ code: roomCode, displayName: "Bob", avatarId: "av-bob" });
+    await alice.sit(1);
+    await bob.sit(2);
+    await alice.waitForSnapshot((s: any) => (s.players ?? []).length === 2);
+    await alice.startSession();
+    await alice.waitForSnapshot((s: any) => s.phase === "betting" && s.handNumber === 1);
+
+    // 1. Pause and verify actionTimer doesn't fire while paused, then Resume and verify timer DOES fire
+    await alice.pause();
+    await bob.waitForSnapshot((s: any) => s.isPaused === true);
+    await new Promise((r) => setTimeout(r, 1200));
+    expect((alice.latestSnapshot as ClientPokerGameView).phase).toBe("betting");
+    expect((alice.latestSnapshot as ClientPokerGameView).isPaused).toBe(true);
+
+    await alice.resume();
+    await bob.waitForSnapshot((s: any) => s.isPaused === false);
+    // After resume, the remaining ~1s poker action timer MUST actually fire and advance turn/hand!
+    const hand1DoneSnap = await alice.waitForSnapshot(
+      (s: any) => s.phase === "hand_summary",
+      3500,
+    );
+    const preHand2Alice = hand1DoneSnap.stacks[alice.playerId]!;
+    const preHand2Bob = hand1DoneSnap.stacks[bob.playerId]!;
+    expect(preHand2Alice + preHand2Bob).toBe(20000);
+
+    // Start Hand 2, raise, then cancel mid-hand
+    await alice.pokerNextHand();
+    await alice.waitForSnapshot((s: any) => s.phase === "betting" && s.handNumber === 2);
+
+    const activeSnap = alice.latestSnapshot as ClientPokerGameView;
+    const prevHandNum = activeSnap.handNumber - 1;
+    const firstClient = activeSnap.toActPlayerId === alice.playerId ? alice : bob;
+    await firstClient.pokerRaise(200);
+    await alice.waitForSnapshot((s: any) => s.currentBet === 200);
+
+    // Host reverses mid-hand
+    await alice.cancelRoundRefund();
+    const cancelledSnap = await alice.waitForSnapshot(
+      (s: any) => s.phase === "hand_summary" && s.winners === null,
+    );
+    // Exact chip conservation: both stacks back to pre-hand baseline (no double-refund!)
+    expect(cancelledSnap.stacks[alice.playerId]).toBe(preHand2Alice);
+    expect(cancelledSnap.stacks[bob.playerId]).toBe(preHand2Bob);
+    expect(cancelledSnap.handNumber).toBe(prevHandNum);
+
+    // Host can advance cleanly to next hand without getting stuck
+    await alice.pokerNextHand();
+    const nextHandSnap = await alice.waitForSnapshot(
+      (s: any) => s.phase === "betting" && s.handNumber === prevHandNum + 1,
+    );
+    const foldActor = nextHandSnap.toActPlayerId === alice.playerId ? alice : bob;
+    await foldActor.pokerFold();
+    const finishedSnap = await alice.waitForSnapshot(
+      (s: any) => s.phase === "hand_summary" && Boolean(s.winners && s.winners.length > 0),
+    );
+    expect(finishedSnap.stacks[alice.playerId]! + finishedSnap.stacks[bob.playerId]!).toBe(20000);
+
+    // Host reverses COMPLETED hand in hand_summary ("between rounds") -> chips revert cleanly to pre-hand baseline!
+    await alice.cancelRoundRefund();
+    const reversedSummarySnap = await alice.waitForSnapshot(
+      (s: any) => s.phase === "hand_summary" && s.winners === null,
+    );
+    expect(reversedSummarySnap.stacks[alice.playerId]).toBe(preHand2Alice);
+    expect(reversedSummarySnap.stacks[bob.playerId]).toBe(preHand2Bob);
+    expect(reversedSummarySnap.handNumber).toBe(prevHandNum);
+
+    // Host ends session cleanly without crashing on PokerState
+    await alice.endSession();
+    const lobbySnap = await bob.waitForSnapshot(
+      (s: any) => s.phase === "lobby" && s.isSessionStarted === false,
+    );
+    expect(lobbySnap.phase).toBe("lobby");
+
+    // Start again and closeTable mid-hand without crashing
+    await alice.startSession();
+    await alice.waitForSnapshot((s: any) => s.phase === "betting");
+
+    let closedReceived = false;
+    bob.socket?.on("room:closed", () => {
+      closedReceived = true;
+    });
+    await alice.closeTable();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(closedReceived).toBe(true);
+
+    alice.disconnect();
+    bob.disconnect();
   });
 });

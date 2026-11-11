@@ -112,10 +112,6 @@ export function formatEventActivity(
       return `₹${event.amount?.toLocaleString() ?? 0} uncalled bet returned to ${getName(event.playerId)}`;
     }
 
-    case "playerSeenCards": {
-      return `👁️ ${getName(event.playerId)} saw their cards (Playing Seen)`;
-    }
-
     // ─── Common / Host Events ──────────────────────────────────────────────
     case "chipsAdjusted": {
       const targetName = event.target === "dealer" ? "the dealer bank" : getName(event.target);

@@ -2,7 +2,6 @@ import type {
   ActivityEntry,
   ChatMessage,
   ClientGameView,
-  ClientPokerGameView,
   RoomConfig,
   ServerError,
   TableNotification,
@@ -91,7 +90,6 @@ export interface GameStoreState {
   pokerRaise: (to: number) => void;
   pokerAllIn: () => void;
   pokerShowCards: () => void;
-  pokerSeeCards: () => void;
   pokerDealNextStreet: () => void;
   pokerNextHand: () => void;
   pokerSitOut: () => void;
@@ -202,6 +200,9 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         soundEngine.play("chat_pop");
       }
       set((state) => {
+        if (state.chatLog.some((m) => m.seq === payload.message.seq)) {
+          return state;
+        }
         const next = [...state.chatLog, payload.message].slice(-200);
         const unread = state.activeModal !== "chat" ? state.unreadChatCount + 1 : 0;
         return { chatLog: next, unreadChatCount: unread };
@@ -402,6 +403,9 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         currentView: null,
         chatLog: [],
         activityLog: [],
+        unreadChatCount: 0,
+        tableNotification: null,
+        errorMessage: null,
         activeModal: null,
       });
     },
@@ -614,10 +618,6 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     pokerShowCards: () => {
       const socket = ensureSocket();
       socket.emit("poker:showCards");
-    },
-    pokerSeeCards: () => {
-      const socket = ensureSocket();
-      socket.emit("poker:seeCards");
     },
     pokerDealNextStreet: () => {
       const socket = ensureSocket();

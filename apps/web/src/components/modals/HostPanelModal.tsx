@@ -1,6 +1,6 @@
 import type { Participant, TableTheme, PlayerTransaction } from "@felt/shared";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGameStore } from "../../store/game-store";
 import { CASINO_THEMES } from "../../store/settings-store";
 
@@ -31,6 +31,19 @@ export const HostPanelModal: React.FC = () => {
   const [adjustOp, setAdjustOp] = useState<"set" | "add" | "subtract">("add");
   const [adjustAmount, setAdjustAmount] = useState<number>(500);
   const [newDealerCandidate, setNewDealerCandidate] = useState<string>("");
+  const [confirmAction, setConfirmAction] = useState<{ key: string } | null>(null);
+
+  useEffect(() => {
+    if (!confirmAction) return;
+    const t = setTimeout(() => setConfirmAction(null), 4000);
+    return () => clearTimeout(t);
+  }, [confirmAction]);
+
+  useEffect(() => {
+    if (activeModal !== "host") {
+      setConfirmAction(null);
+    }
+  }, [activeModal]);
 
   if (activeModal !== "host" || !currentView || currentView.hostId !== myPlayerId) {
     return null;
@@ -169,14 +182,21 @@ export const HostPanelModal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm("Are you sure you want to end this game session?")) {
-                    endSession();
-                    closeModal();
+                  if (confirmAction?.key !== "endSession") {
+                    setConfirmAction({ key: "endSession" });
+                    return;
                   }
+                  setConfirmAction(null);
+                  endSession();
+                  closeModal();
                 }}
-                className="py-2.5 px-3 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-rose-200 border border-rose-700/60 font-bold transition-all"
+                className={`py-2.5 px-3 rounded-lg border font-bold transition-all ${
+                  confirmAction?.key === "endSession"
+                    ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-400 animate-pulse"
+                    : "bg-rose-900/80 hover:bg-rose-800 text-rose-200 border-rose-700/60"
+                }`}
               >
-                ⏹ End Session
+                {confirmAction?.key === "endSession" ? "Confirm End Session?" : "⏹ End Session"}
               </button>
             </div>
           </div>
@@ -213,22 +233,39 @@ export const HostPanelModal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  const msg = isPoker
-                    ? "Cancel this hand and refund all pot bets to players?"
-                    : "Cancel this round and refund all bets to players?";
-                  if (window.confirm(msg)) {
-                    cancelRound();
+                  if (confirmAction?.key !== "cancelRound") {
+                    setConfirmAction({ key: "cancelRound" });
+                    return;
                   }
+                  setConfirmAction(null);
+                  cancelRound();
+                  closeModal();
                 }}
                 disabled={currentView.phase === "lobby"}
-                className="py-2 px-2.5 rounded-lg bg-rose-900/60 hover:bg-rose-800 disabled:opacity-40 text-rose-200 border border-rose-700/50 font-bold transition-all text-[11px] text-left"
-                title={isPoker ? "Cancel hand and refund pot" : "Cancel round and refund bets"}
+                className={`py-2 px-2.5 rounded-lg border font-bold transition-all text-[11px] text-left disabled:opacity-40 ${
+                  confirmAction?.key === "cancelRound"
+                    ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-300 animate-pulse"
+                    : "bg-rose-900/60 hover:bg-rose-800 text-rose-200 border-rose-700/50"
+                }`}
+                title={
+                  isPoker
+                    ? "Reverse this hand and restore stacks"
+                    : "Reverse this round and restore stacks"
+                }
               >
                 <span className="block font-bold">
-                  {isPoker ? "↩ Cancel Hand" : "↩ Cancel Round"}
+                  {confirmAction?.key === "cancelRound"
+                    ? isPoker
+                      ? "✓ Confirm Reverse Hand"
+                      : "✓ Confirm Reverse Round"
+                    : isPoker
+                      ? "↩ Reverse Hand"
+                      : "↩ Reverse Round"}
                 </span>
                 <span className="block text-[9px] text-rose-300/70 font-normal">
-                  Refund all in-play bets
+                  {confirmAction?.key === "cancelRound"
+                    ? "Click again to confirm"
+                    : "Restore stacks from this round"}
                 </span>
               </button>
             </div>
@@ -275,18 +312,23 @@ export const HostPanelModal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (
-                    window.confirm(
-                      "Permanently close this table? All players will be disconnected and the room destroyed.",
-                    )
-                  ) {
-                    closeTable();
-                    closeModal();
+                  if (confirmAction?.key !== "closeTable") {
+                    setConfirmAction({ key: "closeTable" });
+                    return;
                   }
+                  setConfirmAction(null);
+                  closeTable();
+                  closeModal();
                 }}
-                className="w-full py-1.5 px-3 rounded-lg bg-red-950/80 hover:bg-red-900 text-rose-300 border border-red-700/60 font-bold text-[11px] transition-all text-center"
+                className={`w-full py-1.5 px-3 rounded-lg border font-bold text-[11px] transition-all text-center ${
+                  confirmAction?.key === "closeTable"
+                    ? "bg-red-700 hover:bg-red-600 text-white border-red-400 animate-pulse"
+                    : "bg-red-950/80 hover:bg-red-900 text-rose-300 border-red-700/60"
+                }`}
               >
-                🚫 Close Table (Remove Room)
+                {confirmAction?.key === "closeTable"
+                  ? "Confirm Close Table? (Irreversible)"
+                  : "🚫 Close Table (Remove Room)"}
               </button>
             </div>
           </div>
@@ -330,6 +372,8 @@ export const HostPanelModal: React.FC = () => {
                 const isDealer = dealerId === p.id;
                 const isHostPlayer = p.id === currentView.hostId;
                 const stack = stacks[p.id] ?? 0;
+                const isPendingUnseat =
+                  currentView.pendingUnseatPlayers?.includes(p.id) ?? false;
 
                 return (
                   <div
@@ -353,6 +397,11 @@ export const HostPanelModal: React.FC = () => {
                           Seat #{p.seat}
                         </span>
                       )}
+                      {isPendingUnseat && (
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 rounded font-bold">
+                          Unseating…
+                        </span>
+                      )}
                       <span className="text-[10px] text-zinc-400 font-mono">(₹{stack})</span>
                     </div>
 
@@ -370,35 +419,52 @@ export const HostPanelModal: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            if (window.confirm(`Transfer host privileges to ${p.displayName}?`)) {
-                              transferHost(p.id);
+                            const key = `makeHost:${p.id}`;
+                            if (confirmAction?.key !== key) {
+                              setConfirmAction({ key });
+                              return;
                             }
+                            setConfirmAction(null);
+                            transferHost(p.id);
                           }}
-                          className="px-2 py-1 rounded bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 border border-amber-700/50 text-[10px] transition-colors"
+                          className={`px-2 py-1 rounded border text-[10px] transition-colors ${
+                            confirmAction?.key === `makeHost:${p.id}`
+                              ? "bg-amber-600 hover:bg-amber-500 text-white border-amber-400 font-bold"
+                              : "bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 border-amber-700/50"
+                          }`}
                         >
-                          Make Host
+                          {confirmAction?.key === `makeHost:${p.id}` ? "Confirm?" : "Make Host"}
                         </button>
                       )}
                       {p.seat !== null && (
                         <button
                           type="button"
+                          disabled={isPendingUnseat}
                           onClick={() => assignSeat(p.id, null)}
-                          className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] transition-colors"
+                          className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 text-[10px] transition-colors"
                         >
-                          Unseat
+                          {isPendingUnseat ? "Unseating…" : "Unseat"}
                         </button>
                       )}
                       {!isHostPlayer && (
                         <button
                           type="button"
                           onClick={() => {
-                            if (window.confirm(`Kick ${p.displayName}?`)) {
-                              kick(p.id);
+                            const key = `kick:${p.id}`;
+                            if (confirmAction?.key !== key) {
+                              setConfirmAction({ key });
+                              return;
                             }
+                            setConfirmAction(null);
+                            kick(p.id);
                           }}
-                          className="px-2 py-1 rounded bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/50 text-[10px] transition-colors"
+                          className={`px-2 py-1 rounded border text-[10px] transition-colors ${
+                            confirmAction?.key === `kick:${p.id}`
+                              ? "bg-rose-600 hover:bg-rose-500 text-white border-rose-400 font-bold"
+                              : "bg-rose-950/70 hover:bg-rose-900 text-rose-300 border-rose-800/50"
+                          }`}
                         >
-                          Kick
+                          {confirmAction?.key === `kick:${p.id}` ? "Confirm Kick?" : "Kick"}
                         </button>
                       )}
                     </div>

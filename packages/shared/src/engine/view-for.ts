@@ -89,6 +89,10 @@ export interface ClientGameView {
    * The client uses this to show a "will apply next round" indicator.
    */
   pendingChipAdjustmentPlayers?: string[] | undefined;
+  /** playerIds currently sitting out this round. */
+  sittingOut?: string[] | undefined;
+  /** playerIds queued by host to be unseated after the current round ends. */
+  pendingUnseatPlayers?: string[] | undefined;
 }
 
 // ─── Main filter ─────────────────────────────────────────────────────────────
@@ -129,6 +133,7 @@ export function viewFor(state: GameState, _viewerId: string): ClientGameView {
     isPaused: state.isPaused,
     pendingBets: Object.fromEntries(state.pendingBets),
     lockedBets: Object.fromEntries(state.lockedBets),
+    sittingOut: Array.from(state.sittingOut ?? []),
     dealerHoleCardRevealed: Boolean(state.dealerHoleCardRevealed),
     tableStatusMessage: state.tableStatusMessage ?? null,
     waitingForReconnect: state.waitingForReconnect ?? null,

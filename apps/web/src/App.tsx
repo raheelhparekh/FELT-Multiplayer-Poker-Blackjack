@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NotificationToast } from "./components/NotificationToast";
@@ -21,6 +21,7 @@ const RoomRoute: React.FC = () => {
   const errorMessage = useGameStore((s) => s.errorMessage);
 
   const [attemptedJoin, setAttemptedJoin] = useState(false);
+  const wasInRoomRef = useRef(false);
 
   const cleanCode = (roomCode || "").toUpperCase();
   const hasTokenForRoom = Boolean(token && storeRoomCode === cleanCode);
@@ -28,9 +29,33 @@ const RoomRoute: React.FC = () => {
     typeof window !== "undefined" && localStorage.getItem("felt_display_name"),
   );
 
+  // Remember once the client has entered this room so leaving or closing navigates cleanly to "/"
+  useEffect(() => {
+    if (currentView && currentView.roomCode === cleanCode) {
+      wasInRoomRef.current = true;
+    }
+  }, [currentView, cleanCode]);
+
+  // Reset tracking when navigating to a different room code
+  useEffect(() => {
+    wasInRoomRef.current = Boolean(currentView && currentView.roomCode === cleanCode);
+    setAttemptedJoin(false);
+  }, [cleanCode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If left room or table closed, navigate back to landing without auto-rejoining
+  useEffect(() => {
+    if (!storeRoomCode && (wasInRoomRef.current || attemptedJoin)) {
+      navigate("/");
+    }
+  }, [storeRoomCode, attemptedJoin, navigate]);
+
   useEffect(() => {
     if (!roomCode) {
       navigate("/");
+      return;
+    }
+
+    if (wasInRoomRef.current && !storeRoomCode) {
       return;
     }
 
@@ -56,13 +81,6 @@ const RoomRoute: React.FC = () => {
     hasTokenForRoom,
     hasSavedProfile,
   ]);
-
-  // If left room, navigate back to landing
-  useEffect(() => {
-    if (!storeRoomCode && attemptedJoin) {
-      navigate("/");
-    }
-  }, [storeRoomCode, attemptedJoin, navigate]);
 
   // Synchronize room table theme across all players in room
   useEffect(() => {

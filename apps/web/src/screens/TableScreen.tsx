@@ -64,6 +64,14 @@ export const TableScreen: React.FC = () => {
   const mySeat = myParticipant?.seat ?? null;
   const isSpectator = mySeat === null;
   const isDealerOrHost = myPlayerId === dealerId || myPlayerId === hostId;
+  const myHasHandInRound = hands.some((h) => h.playerId === myPlayerId);
+  const canSwitchSeat =
+    myPlayerId !== dealerId &&
+    (isSpectator ||
+      phase === "lobby" ||
+      phase === "betting" ||
+      phase === "round_summary" ||
+      !myHasHandInRound);
 
   const allSeats: SeatNumber[] = [1, 2, 3, 4, 5, 6, 7];
 
@@ -199,7 +207,8 @@ export const TableScreen: React.FC = () => {
                     stack={occupantStack}
                     activeHandId={activeHandId}
                     isMySeat={false}
-                    canSit={isSpectator}
+                    canSit={canSwitchSeat}
+                    sitLabel={isSpectator ? "Sit Here" : "Switch Seat"}
                     onSit={sit}
                     pendingBet={occupant ? (currentView.pendingBets?.[occupant.id] ?? 0) : 0}
                     lockedBet={occupant ? (currentView.lockedBets?.[occupant.id] ?? 0) : 0}

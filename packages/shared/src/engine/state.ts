@@ -67,6 +67,7 @@ export interface GameState {
     bet: number | null;
     action: number | null;
     insurance: number | null;
+    handSummary?: number | null;
   } | null;
 
   // ─── History ───────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ interface SeatViewProps {
   isMySeat?: boolean;
   onSit?: (seat: number) => void;
   canSit?: boolean;
+  sitLabel?: string;
   pendingBet?: number | undefined;
   lockedBet?: number | undefined;
   showOutcomes?: boolean | undefined;
@@ -30,6 +31,7 @@ export const SeatView: React.FC<SeatViewProps> = ({
   isMySeat = false,
   onSit,
   canSit = false,
+  sitLabel = "Sit Here",
   pendingBet = 0,
   lockedBet = 0,
   showOutcomes = true,
@@ -49,7 +51,7 @@ export const SeatView: React.FC<SeatViewProps> = ({
             onClick={() => onSit(seatNumber)}
             className="px-3 py-1.5 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 active:scale-95 text-xs font-bold text-emerald-100 border border-emerald-600/50 shadow transition-all"
           >
-            Sit Here
+            {sitLabel}
           </button>
         ) : (
           <span className="text-xs text-emerald-600/40 italic">Open</span>

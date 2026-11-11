@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import type { ClientPokerPlayerView, SeatNumber } from "@felt/shared";
-import { soundEngine } from "../../audio/sound-engine";
 import { CardView } from "../CardView";
 import { ChipView } from "../ChipView";
 import { AVATAR_OPTIONS } from "../../types/avatars";
-import { useGameStore } from "../../store/game-store";
 
 export type ChipDirection = "top" | "bottom" | "left" | "right";
 
@@ -17,7 +15,10 @@ interface PokerSeatViewProps {
   isSmallBlind: boolean;
   isBigBlind: boolean;
   canSit: boolean;
+  isSwitchingSeat?: boolean;
   actionDeadline: number | null;
+  actionTimerSec?: number | null;
+  isPaused?: boolean;
   onSit: () => void;
   className?: string;
   dealOrder?: number;
@@ -34,7 +35,10 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
   isSmallBlind,
   isBigBlind,
   canSit,
+  isSwitchingSeat = false,
   actionDeadline,
+  actionTimerSec = 30,
+  isPaused = false,
   onSit,
   className = "",
   dealOrder = 0,
@@ -42,31 +46,18 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
   handNumber = 1,
   chipPosition = "bottom",
 }) => {
-  // Blind Play state for Hero: option to play blind like in real casino / Teen Patti
-  const [hasSeenCards, setHasSeenCards] = useState<boolean>(false);
-  const [isScreenShielded, setIsScreenShielded] = useState<boolean>(false);
-  const prevHandRef = useRef(handNumber);
   const [timerPercent, setTimerPercent] = useState<number>(100);
 
   const isTurn = player?.isTurn ?? false;
 
-  // Reset seen state when a new hand is dealt
+  // Turn timer countdown bar (freezes when paused)
   useEffect(() => {
-    if (handNumber !== prevHandRef.current) {
-      prevHandRef.current = handNumber;
-      setHasSeenCards(false);
-      setIsScreenShielded(false);
-    }
-  }, [handNumber]);
-
-  // Turn timer countdown bar
-  useEffect(() => {
-    if (!isTurn || !actionDeadline) {
-      setTimerPercent(100);
+    if (!isTurn || !actionDeadline || isPaused) {
+      if (!isTurn) setTimerPercent(100);
       return;
     }
 
-    const totalDuration = 30000; // standard 30s
+    const totalDuration = (actionTimerSec ?? 30) * 1000;
     const update = () => {
       const remaining = Math.max(0, actionDeadline - Date.now());
       const pct = Math.min(100, Math.max(0, (remaining / totalDuration) * 100));
@@ -76,7 +67,7 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
     update();
     const interval = setInterval(update, 100);
     return () => clearInterval(interval);
-  }, [isTurn, actionDeadline]);
+  }, [isTurn, actionDeadline, actionTimerSec, isPaused]);
 
   // Directional chip classes ensuring bet chips float inwards toward table center / pot
   const getChipPosClass = (dir: ChipDirection, hasCards = false) => {
@@ -104,9 +95,12 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.94 }}
             onClick={onSit}
+            title={isSwitchingSeat ? `Switch to Seat #${seatNumber}` : `Sit at Seat #${seatNumber}`}
             className="w-8 h-8 sm:w-11 sm:h-11 rounded-full border-2 border-dashed border-emerald-500/50 hover:border-gold-400 bg-black/50 hover:bg-gold-500/10 flex flex-col items-center justify-center text-emerald-400 hover:text-gold-300 transition-colors shadow-lg cursor-pointer"
           >
-            <span className="text-xs sm:text-base font-bold leading-none">+</span>
+            <span className="text-xs sm:text-sm font-bold leading-none">
+              {isSwitchingSeat ? "⇄" : "+"}
+            </span>
             <span className="text-[7px] sm:text-[8px] font-bold uppercase tracking-wider">#{seatNumber}</span>
           </motion.button>
         ) : (
@@ -119,34 +113,18 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
   }
 
   const avatar = AVATAR_OPTIONS.find((a) => a.id === player.avatarId);
-  const isFolded = player.hasFolded;
-
-  const handleSeeCards = () => {
-    soundEngine.play("card_flip");
-    setHasSeenCards(true);
-    setIsScreenShielded(false);
-    if (isMe) {
-      useGameStore.getState().pokerSeeCards();
-    }
-  };
-
-  const handleToggleScreenShield = () => {
-    soundEngine.play("card_flip");
-    setIsScreenShielded((prev) => !prev);
-  };
-
-  const hasPlayerSeenCards = Boolean(player.hasSeenCards || (isMe && hasSeenCards));
-  const isPlayerBlind = player.cards.length > 0 && !hasPlayerSeenCards;
+  const isWaiting = Boolean(player.isWaiting || player.isSittingOut || (player.hasFolded && player.cards.length === 0));
+  const isFoldedInHand = player.hasFolded && player.cards.length > 0;
 
   // ─── 2. HERO VIEW (Viewing Player - Large, Clear & Prominent) ──────────────
   if (isMe) {
     return (
       <div
         className={`relative flex flex-col items-center justify-center transition-all z-20 ${
-          isFolded ? "opacity-40 grayscale-[50%]" : "opacity-100"
+          isFoldedInHand ? "opacity-40 grayscale-[50%]" : isWaiting ? "opacity-80" : "opacity-100"
         } ${className}`}
       >
-        {/* Dealer / Blind / Status Badges */}
+        {/* Dealer / Blind Badges */}
         <div className="absolute -top-3.5 flex items-center gap-1 z-30">
           {isDealerButton && (
             <motion.div
@@ -167,18 +145,6 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
               BB
             </div>
           )}
-          {!isFolded && player.cards.length > 0 && (
-            <div
-              className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md border ${
-                isPlayerBlind
-                  ? "bg-amber-500/25 text-amber-300 border-amber-500/50 animate-pulse"
-                  : "bg-emerald-500/25 text-emerald-300 border-emerald-500/40"
-              }`}
-            >
-              <span>{isPlayerBlind ? "👁️‍🗨️" : "👁️"}</span>
-              <span>{isPlayerBlind ? "BLIND" : "SEEN"}</span>
-            </div>
-          )}
         </div>
 
         {/* Committed Bet Floating Badge (floats inwards towards table center) */}
@@ -192,16 +158,11 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
             <span className="text-[9px] sm:text-[10px] font-mono font-bold text-gold-300">
               ₹{player.committedThisRound.toLocaleString()}
             </span>
-            {isPlayerBlind && (
-              <span className="text-[7.5px] font-black text-amber-400 bg-amber-950/80 px-1 rounded uppercase">
-                Blind
-              </span>
-            )}
           </motion.div>
         )}
 
         {/* Hand Strength Label Hint for Hero */}
-        {player.handStrengthName && !isFolded && hasPlayerSeenCards && !isScreenShielded && (
+        {player.handStrengthName && !isFoldedInHand && !isWaiting && (
           <motion.div
             initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
@@ -211,12 +172,11 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
           </motion.div>
         )}
 
-        {/* Hero Hole Cards (Large, Crisp & Readable) */}
+        {/* Hero Hole Cards (Always dealt face-up to owner) */}
         {player.cards.length > 0 && (
           <div className="relative flex flex-col items-center mb-1 z-10">
             <div className="flex items-center -space-x-4 sm:-space-x-5">
               {player.cards.map((c, idx) => {
-                const isCardHidden = !hasPlayerSeenCards || isScreenShielded;
                 const dealDelay = dealOrder * 0.12 + idx * (totalSeated * 0.12);
 
                 return (
@@ -242,12 +202,11 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
                       damping: 22,
                       delay: Math.min(1.2, dealDelay),
                     }}
-                    whileHover={hasPlayerSeenCards && !isScreenShielded ? { y: -8, scale: 1.08 } : {}}
-                    className="transition-transform cursor-pointer relative"
-                    onClick={!hasPlayerSeenCards ? handleSeeCards : undefined}
+                    whileHover={{ y: -8, scale: 1.08 }}
+                    className="transition-transform relative"
                   >
                     <CardView
-                      cardSlot={isCardHidden ? { hidden: true } : c}
+                      cardSlot={c}
                       isSmall={false}
                       className="shadow-2xl"
                     />
@@ -255,32 +214,6 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
                 );
               })}
             </div>
-
-            {/* Hero See / Shield Buttons */}
-            {!isFolded && (
-              <div className="mt-1 flex items-center gap-1.5 z-30">
-                {!hasPlayerSeenCards ? (
-                  <motion.button
-                    type="button"
-                    whileHover={{ scale: 1.06 }}
-                    whileTap={{ scale: 0.94 }}
-                    onClick={handleSeeCards}
-                    className="px-3 py-1 rounded-full bg-gradient-to-r from-gold-500 to-amber-400 hover:from-gold-400 hover:to-amber-300 text-black font-black text-[11px] tracking-wide shadow-lg border border-gold-300 flex items-center gap-1 animate-bounce cursor-pointer"
-                  >
-                    <span>👁️</span>
-                    <span>See Cards</span>
-                  </motion.button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleToggleScreenShield}
-                    className="text-[9px] text-emerald-400/80 hover:text-gold-300 font-mono tracking-wider bg-black/70 px-2.5 py-0.5 rounded-full border border-emerald-800/60 transition-colors cursor-pointer"
-                  >
-                    {isScreenShielded ? "Peek Cards 👁️" : "Shield Screen 🙈"}
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -305,9 +238,9 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
                 ALL-IN
               </span>
             )}
-            {player.hasFolded && (
-              <span className="absolute -bottom-1 -right-1 text-[8px] font-black uppercase tracking-tight bg-zinc-700 text-zinc-300 px-1 rounded border border-zinc-500 shadow">
-                {player.cards.length === 0 ? "NEXT HAND" : "FOLD"}
+            {(isFoldedInHand || isWaiting) && (
+              <span className="absolute -bottom-1 -right-1 text-[8px] font-black uppercase tracking-tight bg-zinc-700 text-zinc-200 px-1 rounded border border-zinc-500 shadow">
+                {player.isSittingOut ? "SIT OUT" : isWaiting ? "NEXT HAND" : "FOLD"}
               </span>
             )}
           </div>
@@ -343,7 +276,7 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
   return (
     <div
       className={`relative flex flex-col items-center justify-center transition-all ${
-        isFolded ? "opacity-35 grayscale-[60%]" : "opacity-100"
+        isFoldedInHand ? "opacity-35 grayscale-[60%]" : isWaiting ? "opacity-75" : "opacity-100"
       } ${className}`}
     >
       {/* Dealer & Blind Tags */}
@@ -428,9 +361,9 @@ export const PokerSeatView: React.FC<PokerSeatViewProps> = ({
             ALL
           </span>
         )}
-        {player.hasFolded && (
-          <span className="absolute -bottom-1 -right-1 text-[7px] font-black uppercase bg-zinc-700 text-zinc-300 px-0.5 rounded shadow">
-            {player.cards.length === 0 ? "WAIT" : "FOLD"}
+        {(isFoldedInHand || isWaiting) && (
+          <span className="absolute -bottom-1 -right-1 text-[7px] font-black uppercase bg-zinc-700 text-zinc-200 px-0.5 rounded shadow">
+            {player.isSittingOut ? "SIT" : isWaiting ? "WAIT" : "FOLD"}
           </span>
         )}
 

@@ -87,8 +87,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ initialCode = "" }
           ? {
               smallBlind,
               bigBlind,
-              actionTimer,
-              maxSeats,
+              actionTimerSec: actionTimer,
+              maxPlayerSeats: maxSeats,
               startingStack: buyIn,
             }
           : {

@@ -309,4 +309,66 @@ describe("Host Recovery Controls", () => {
     host.disconnect();
     player.disconnect();
   });
+
+  it("reverses completed round in round_summary without double-refunding, allows seat switch, and unseats between rounds", async () => {
+    const host = new TestClient("Host");
+    const player = new TestClient("Player");
+    await host.connect(serverUrl);
+    await player.connect(serverUrl);
+
+    const { roomCode } = await host.createRoom({
+      displayName: "Alice",
+      avatarId: "av-1",
+      config: { actionTimerSec: null, betTimerSec: null } as never,
+    });
+    await player.joinRoom({ code: roomCode, displayName: "Bob", avatarId: "av-2" });
+    await player.sit(1);
+    await host.startSession();
+    await player.waitForPhase("betting");
+
+    const initialStack = player.latestSnapshot!.stacks[player.playerId]!;
+    const initialDealerBank = player.latestSnapshot!.dealerBank;
+
+    // Player switches seat in betting phase before deal
+    await player.sit(3);
+    await player.waitForSnapshot(
+      (s) => s.participants.find((p) => p.id === player.playerId)?.seat === 3,
+    );
+
+    await player.betAdd(200);
+    await player.betLock();
+    await host.dealerDeal();
+
+    const postDeal = await player.waitForSnapshot(
+      (s) => s.phase !== "betting" && s.phase !== "dealing",
+    );
+    if (postDeal.phase === "insurance") {
+      const hand = postDeal.hands.find((h) => h.playerId === player.playerId);
+      if (hand) await player.playInsurance(hand.id, false);
+    }
+    const turnOrSummary = await player.waitForSnapshot(
+      (s) => s.phase === "player_turns" || s.phase === "round_summary",
+    );
+    if (turnOrSummary.phase === "player_turns") {
+      await player.playStand(turnOrSummary.activeHandId!);
+    }
+
+    await player.waitForPhase("round_summary");
+
+    // Host unseats player between rounds (round_summary)
+    await host.assignSeat(player.playerId, null);
+    const afterUnseat = await player.waitForSnapshot(
+      (s) => s.participants.find((p) => p.id === player.playerId)?.seat === null,
+    );
+    expect(afterUnseat.participants.find((p) => p.id === player.playerId)?.seat).toBeNull();
+
+    // Host reverses completed round in round_summary -> exact pre-round stacks & bank restored
+    await host.cancelRoundRefund();
+    const afterReverse = await player.waitForPhase("betting");
+    expect(afterReverse.stacks[player.playerId]).toBe(initialStack);
+    expect(afterReverse.dealerBank).toBe(initialDealerBank);
+
+    host.disconnect();
+    player.disconnect();
+  });
 });

@@ -107,10 +107,35 @@ export class Room {
   // ─── Queued chip actions (applied at round_summary / next betting phase) ──
   private queuedChipActions: QueuedChipAction[] = [];
 
+  // ─── Queued host unseats (applied when current round/hand finishes) ────────
+  private pendingUnseatPlayerIds = new Set<string>();
+  private deferSocketDisconnect = false;
+
+  // ─── Round/Hand baseline snapshots for exact round reversal ────────────────
+  private bjRoundBaseline: {
+    roundNumber: number;
+    dealerBankBeforeRound: number;
+    preRoundPlayerBalances: Map<string, number>;
+    shoeBeforeRound: any;
+    stackHistoryLength: number;
+    transactionsLength: number;
+    settledDeltas: Map<string, number> | null;
+    settledDealerBankDelta: number | null;
+  } | null = null;
+
+  private pokerHandBaseline: {
+    handNumberBefore: number;
+    dealerButtonSeatBefore: number;
+    preHandStacks: Map<string, number>;
+    handHistoryLength: number;
+    settledDeltas: Map<string, number> | null;
+  } | null = null;
+
   // ─── Timers ────────────────────────────────────────────────────────────────
   private betTimer: NodeJS.Timeout | null = null;
   private actionTimer: NodeJS.Timeout | null = null;
   private insuranceTimer: NodeJS.Timeout | null = null;
+  private autoDealerTurnTimer: NodeJS.Timeout | null = null;
   private seatHoldTimers = new Map<string, NodeJS.Timeout>();
   private emptyRoomTimer: NodeJS.Timeout | null = null;
   // Grace timer for host/dealer disconnect (90s)
@@ -127,11 +152,36 @@ export class Room {
     this.gameModule = options.gameModule ?? getGameModule(options.gameType ?? "blackjack");
     this.gameType = this.gameModule.id;
     const baseConfig = this.gameModule.defaultConfig;
-    this.config = options.config ? { ...baseConfig, ...options.config } : { ...baseConfig };
+    const normalizedOptions =
+      this.gameType === "poker" && options.config
+        ? this.normalizePokerConfig(options.config)
+        : options.config;
+    this.config = normalizedOptions ? { ...baseConfig, ...normalizedOptions } : { ...baseConfig };
     this.pacingEnabled = options.pacingEnabled ?? true;
     this.onEmptyRoomDestroy = options.onEmptyRoomDestroy;
 
     this.state = this.gameModule.createState(this.roomCode, this.config);
+  }
+
+  private normalizePokerConfig(raw: Record<string, any>): Record<string, any> {
+    const out = { ...raw };
+    if (out["maxSeats"] !== undefined && out["maxPlayerSeats"] === undefined) {
+      out["maxPlayerSeats"] = out["maxSeats"];
+    }
+    delete out["maxSeats"];
+    if (out["actionTimer"] !== undefined && out["actionTimerSec"] === undefined) {
+      out["actionTimerSec"] = out["actionTimer"];
+    }
+    delete out["actionTimer"];
+    return out;
+  }
+
+  /** Keep this.participants and this.state.participants synchronized with fresh references. */
+  private syncParticipant(participant: Participant): void {
+    this.participants.set(participant.id, participant);
+    const stateParticipants = new Map(this.state.participants);
+    stateParticipants.set(participant.id, { ...participant });
+    this.state = { ...this.state, participants: stateParticipants };
   }
 
   // ─── Lifecycle / Sockets ───────────────────────────────────────────────────
@@ -228,8 +278,8 @@ export class Room {
       this.state.hostId = playerId;
     }
 
-    // Auto-assign the room creator as dealer so they can start sessions immediately
-    if (isAutoDealer) {
+    // Auto-assign the room creator as dealer in Blackjack so they can start sessions immediately
+    if (isAutoDealer && this.gameType === "blackjack") {
       this.dealerId = playerId;
       this.state.dealerId = playerId;
     }
@@ -348,13 +398,11 @@ export class Room {
     this.cancelEmptyRoomTimer();
 
     // Update in engine state
-    const stateParticipants = new Map(this.state.participants);
-    stateParticipants.set(playerId, existing);
-    this.state = { ...this.state, participants: stateParticipants };
+    this.syncParticipant(existing);
 
     // If this reconnect resolves a host/dealer grace period, clear it
     const isReturningHost = playerId === this.hostId;
-    const isReturningDealer = playerId === this.dealerId;
+    const isReturningDealer = this.gameType === "blackjack" && playerId === this.dealerId;
     if ((isReturningHost || isReturningDealer) && this.hostDealerGraceTimer) {
       clearTimeout(this.hostDealerGraceTimer);
       this.hostDealerGraceTimer = null;
@@ -386,15 +434,13 @@ export class Room {
     participant.isConnected = false;
 
     // Update in state
-    const stateParticipants = new Map(this.state.participants);
-    stateParticipants.set(playerId, participant);
-    this.state = { ...this.state, participants: stateParticipants };
+    this.syncParticipant(participant);
 
     this.addActivity(`${participant.displayName} disconnected`);
     this.broadcastPresence(playerId, false);
 
     const wasHost = playerId === this.hostId;
-    const wasDealer = playerId === this.dealerId;
+    const wasDealer = this.gameType === "blackjack" && playerId === this.dealerId;
     const isGameActive = this.state.isSessionStarted || this.state.phase !== "lobby";
 
     if ((wasHost || wasDealer) && isGameActive) {
@@ -610,12 +656,28 @@ export class Room {
       const seatedPlayers = new Map(this.state.seatedPlayers);
       seatedPlayers.delete(seat);
       this.state = { ...this.state, seatedPlayers };
+      this.syncParticipant(participant);
     }
 
     this.handleDisconnect(socketId);
   }
 
   // ─── Seat Management ───────────────────────────────────────────────────────
+
+  private getPokerEligibleCount(): number {
+    const sittingOut = (this.state as any).sittingOut as Set<string> | undefined;
+    let count = 0;
+    for (const participant of this.participants.values()) {
+      if (participant.seat !== null && !sittingOut?.has(participant.id)) {
+        const stack =
+          this.state.stacks.get(participant.id) ??
+          (this.state as any).players?.get(participant.id)?.stack ??
+          0;
+        if (stack > 0) count++;
+      }
+    }
+    return count;
+  }
 
   public sit(playerId: string, seat: number): void {
     const p = this.participants.get(playerId);
@@ -627,7 +689,9 @@ export class Room {
     }
 
     const maxSeats =
-      this.gameType === "poker" ? ((this.config as any).maxSeats ?? 9) : this.config.maxPlayerSeats;
+      this.gameType === "poker"
+        ? ((this.config as any).maxPlayerSeats ?? (this.config as any).maxSeats ?? 9)
+        : this.config.maxPlayerSeats;
     if (seat < 1 || seat > maxSeats) {
       throw new EngineError(
         "ILLEGAL_ACTION",
@@ -641,10 +705,39 @@ export class Room {
       throw new EngineError("ILLEGAL_ACTION", `Seat ${seat} is already occupied`);
     }
 
-    // If seated elsewhere, unseat first
-    if (p.seat !== null && p.seat !== seatNum) {
+    const previousSeat = p.seat;
+    const isSwitchingSeat = previousSeat !== null && previousSeat !== seatNum;
+
+    // Prevent switching seats mid-hand while actively holding cards/chips in play
+    if (isSwitchingSeat) {
+      if (this.gameType === "poker") {
+        const pokerState = this.state as any;
+        const pokerPlayer = pokerState.players?.get(playerId);
+        const phase = pokerState.phase as string;
+        const inActiveHand =
+          phase !== "lobby" &&
+          phase !== "hand_summary" &&
+          pokerPlayer &&
+          ((pokerPlayer.holeCards?.length ?? 0) > 0 || (pokerPlayer.committedThisHand ?? 0) > 0);
+        if (inActiveHand) {
+          throw new EngineError(
+            "ILLEGAL_ACTION",
+            "Cannot change seats during an active hand — wait until the hand ends",
+          );
+        }
+      } else {
+        const phase = this.state.phase;
+        const hasHandInRound = this.state.hands?.some((h: Hand) => h.playerId === playerId);
+        if (phase !== "lobby" && phase !== "betting" && phase !== "round_summary" && hasHandInRound) {
+          throw new EngineError(
+            "ILLEGAL_ACTION",
+            "Cannot change seats while playing an active hand",
+          );
+        }
+      }
+
       const seatedPlayers = new Map(this.state.seatedPlayers);
-      seatedPlayers.delete(p.seat);
+      seatedPlayers.delete(previousSeat);
       this.state = { ...this.state, seatedPlayers };
     }
 
@@ -652,10 +745,12 @@ export class Room {
     if (p.role === "spectator") {
       p.role = "player";
     }
+    this.pendingUnseatPlayerIds.delete(playerId);
 
     const seatedPlayers = new Map(this.state.seatedPlayers);
     seatedPlayers.set(seatNum, playerId);
     this.state = { ...this.state, seatedPlayers };
+    this.syncParticipant(p);
 
     if (this.gameType === "poker") {
       const pokerState = this.state as any;
@@ -676,7 +771,6 @@ export class Room {
           hasFolded: isMidHandJoin,
           isAllIn: false,
           actedThisRound: isMidHandJoin,
-          hasSeenCards: false,
         });
       } else {
         const existing = pokerState.players.get(playerId);
@@ -700,11 +794,98 @@ export class Room {
       if (!pokerState.rebuys.has(playerId)) {
         pokerState.rebuys.set(playerId, 0);
       }
-      pokerState.participants.set(playerId, p);
+      pokerState.participants.set(playerId, { ...p });
+
+      // If table was waiting in hand_summary for >= 2 players, start next-hand timer now
+      if (
+        this.state.isSessionStarted &&
+        (this.state.phase as string) === "hand_summary" &&
+        !this.actionTimer &&
+        !this.state.isPaused &&
+        this.getPokerEligibleCount() >= 2
+      ) {
+        this.setupPokerNextHandTimer();
+      }
     }
 
-    this.addActivity(`${p.displayName} sat at seat ${seat}`);
+    this.updateTableStatusMessage();
+    this.addActivity(
+      isSwitchingSeat
+        ? `${p.displayName} moved from seat ${previousSeat} to seat ${seat}`
+        : `${p.displayName} sat at seat ${seat}`,
+    );
     this.broadcastSnapshot();
+  }
+
+  private executeImmediateUnseat(playerId: string, byHost = false): void {
+    const p = this.participants.get(playerId);
+    if (!p || p.seat === null) return;
+
+    this.pendingUnseatPlayerIds.delete(playerId);
+
+    if (this.gameType === "poker") {
+      const pokerPlayer = (this.state as any).players?.get(playerId);
+      if (pokerPlayer) {
+        const stacks = new Map(this.state.stacks);
+        stacks.set(playerId, pokerPlayer.stack ?? stacks.get(playerId) ?? 0);
+        this.state = { ...this.state, stacks };
+        (this.state as any).players?.delete(playerId);
+      }
+      if (this.state.sittingOut?.has(playerId)) {
+        const sittingOut = new Set(this.state.sittingOut);
+        sittingOut.delete(playerId);
+        this.state = { ...this.state, sittingOut };
+      }
+    }
+
+    const previousSeat = p.seat;
+    const seatedPlayers = new Map(this.state.seatedPlayers);
+    seatedPlayers.delete(previousSeat);
+
+    p.seat = null;
+    if (p.role === "player") {
+      p.role = p.isHost ? "host" : "spectator";
+    }
+
+    // Clear any pending/locked bets if standing during Blackjack betting
+    let pendingBets = this.state.pendingBets;
+    let lockedBets = this.state.lockedBets;
+    let sittingOut = this.state.sittingOut;
+    if (this.gameType === "blackjack" && this.state.phase === "betting") {
+      if (pendingBets?.has(playerId)) {
+        pendingBets = new Map(pendingBets);
+        pendingBets.delete(playerId);
+      }
+      if (lockedBets?.has(playerId)) {
+        const locked = lockedBets.get(playerId)!;
+        const stacks = new Map(this.state.stacks);
+        stacks.set(playerId, (stacks.get(playerId) ?? 0) + locked);
+        lockedBets = new Map(lockedBets);
+        lockedBets.delete(playerId);
+        this.state = { ...this.state, stacks, lockedBets };
+      }
+      if (sittingOut?.has(playerId)) {
+        sittingOut = new Set(sittingOut);
+        sittingOut.delete(playerId);
+      }
+    }
+
+    this.state = { ...this.state, seatedPlayers, pendingBets, sittingOut };
+    this.syncParticipant(p);
+    this.updateTableStatusMessage();
+    this.addActivity(
+      byHost
+        ? `Host unseated ${p.displayName} from seat ${previousSeat}`
+        : `${p.displayName} stood up from seat ${previousSeat}`,
+    );
+  }
+
+  private applyPendingUnseats(): void {
+    if (this.pendingUnseatPlayerIds.size === 0) return;
+    for (const pid of Array.from(this.pendingUnseatPlayerIds)) {
+      this.executeImmediateUnseat(pid, true);
+    }
+    this.pendingUnseatPlayerIds.clear();
   }
 
   public stand(playerId: string): void {
@@ -712,18 +893,21 @@ export class Room {
     if (!p) throw new EngineError("ILLEGAL_ACTION", "Participant not found");
     if (p.seat === null) return;
 
-    // Disallow standing mid-round if the player has active hands
+    // Disallow standing mid-round if the player has active hands/chips committed
     if (this.gameType === "poker") {
       const pokerPlayer = (this.state as any).players?.get(playerId);
-      if (
-        pokerPlayer &&
-        !pokerPlayer.hasFolded &&
-        (this.state.phase as string) !== "lobby" &&
-        (this.state.phase as string) !== "hand_summary"
-      ) {
+      const isBetweenHands =
+        (this.state.phase as string) === "lobby" || (this.state.phase as string) === "hand_summary";
+      const isWaitingOnly =
+        !pokerPlayer ||
+        ((pokerPlayer.holeCards?.length ?? 0) === 0 && (pokerPlayer.committedThisHand ?? 0) === 0);
+      if (!isBetweenHands && !isWaitingOnly && !pokerPlayer.hasFolded) {
         throw new EngineError("ILLEGAL_ACTION", "Cannot stand while playing an active hand");
       }
-      (this.state as any).players?.delete(playerId);
+      // If folded after committing chips mid-hand, disallow voluntary stand until hand ends so pot accounting stays intact
+      if (!isBetweenHands && pokerPlayer && pokerPlayer.hasFolded && (pokerPlayer.committedThisHand ?? 0) > 0) {
+        throw new EngineError("ILLEGAL_ACTION", "Cannot stand until the current hand finishes");
+      }
     } else {
       if (
         this.state.phase !== "lobby" &&
@@ -739,36 +923,7 @@ export class Room {
       }
     }
 
-    const previousSeat = p.seat;
-    const seatedPlayers = new Map(this.state.seatedPlayers);
-    seatedPlayers.delete(previousSeat);
-
-    p.seat = null;
-    if (p.role === "player") {
-      p.role = p.isHost ? "host" : "spectator";
-    }
-
-    // Clear any pending bets if standing during betting
-    let pendingBets = this.state.pendingBets;
-    let lockedBets = this.state.lockedBets;
-    if (this.state.phase === "betting" && this.gameType === "blackjack") {
-      if (pendingBets?.has(playerId)) {
-        pendingBets = new Map(pendingBets);
-        pendingBets.delete(playerId);
-      }
-      if (lockedBets?.has(playerId)) {
-        // Return chips to stack
-        const locked = lockedBets.get(playerId)!;
-        const stacks = new Map(this.state.stacks);
-        stacks.set(playerId, (stacks.get(playerId) ?? 0) + locked);
-        lockedBets = new Map(lockedBets);
-        lockedBets.delete(playerId);
-        this.state = { ...this.state, stacks, lockedBets };
-      }
-    }
-
-    this.state = { ...this.state, seatedPlayers, pendingBets };
-    this.addActivity(`${p.displayName} stood up from seat ${previousSeat}`);
+    this.executeImmediateUnseat(playerId, false);
     this.broadcastSnapshot();
   }
 
@@ -789,12 +944,14 @@ export class Room {
       const prevDealer = this.participants.get(this.dealerId);
       if (prevDealer && prevDealer.role === "dealer") {
         prevDealer.role = prevDealer.isHost ? "host" : "spectator";
+        this.syncParticipant(prevDealer);
       }
     }
 
     target.role = "dealer";
     this.dealerId = targetId;
     this.state.dealerId = targetId;
+    this.syncParticipant(target);
 
     this.addActivity(`${target.displayName} is now the Dealer`);
     this.broadcastSnapshot();
@@ -807,7 +964,36 @@ export class Room {
     if (!target) throw new EngineError("ILLEGAL_ACTION", "Target user not found");
 
     if (seat === null) {
-      this.stand(targetId);
+      if (target.seat === null) return;
+
+      // Determine whether target can be unseated immediately or must wait for end of round/hand
+      let canUnseatNow: boolean;
+      if (this.gameType === "poker") {
+        const phase = this.state.phase as string;
+        const pokerPlayer = (this.state as any).players?.get(targetId);
+        const isBetweenRounds = phase === "lobby" || phase === "hand_summary";
+        const isWaitingOnly =
+          !pokerPlayer ||
+          ((pokerPlayer.holeCards?.length ?? 0) === 0 && (pokerPlayer.committedThisHand ?? 0) === 0);
+        canUnseatNow = isBetweenRounds || isWaitingOnly;
+      } else {
+        const phase = this.state.phase;
+        const hasHandInRound = this.state.hands?.some((h: Hand) => h.playerId === targetId);
+        canUnseatNow =
+          phase === "lobby" || phase === "round_summary" || phase === "betting" || !hasHandInRound;
+      }
+
+      if (canUnseatNow) {
+        this.executeImmediateUnseat(targetId, true);
+        this.broadcastSnapshot();
+      } else {
+        // Queue for automatic unseat at round_summary / hand_summary
+        this.pendingUnseatPlayerIds.add(targetId);
+        this.addActivity(
+          `Host scheduled ${target.displayName} to be unseated after this ${this.gameType === "poker" ? "hand" : "round"}`,
+        );
+        this.broadcastSnapshot();
+      }
       return;
     }
 
@@ -827,6 +1013,7 @@ export class Room {
     const token = this.playerTokens.get(targetId);
     if (token) this.bannedTokens.add(token);
     this.bannedPlayerIds.add(targetId);
+    this.pendingUnseatPlayerIds.delete(targetId);
 
     // Vacate seat if seated
     if (target.seat !== null) {
@@ -835,11 +1022,12 @@ export class Room {
       } catch {
         const seatedPlayers = new Map(this.state.seatedPlayers);
         seatedPlayers.delete(target.seat);
+        target.seat = null;
         this.state = { ...this.state, seatedPlayers };
       }
     }
 
-    const wasDealer = this.dealerId === targetId;
+    const wasDealer = this.gameType === "blackjack" && this.dealerId === targetId;
     if (wasDealer) {
       this.dealerId = this.hostId;
       this.state.dealerId = this.hostId;
@@ -885,12 +1073,14 @@ export class Room {
       if (currentHost.role === "host") {
         currentHost.role = currentHost.seat !== null ? "player" : "spectator";
       }
+      this.syncParticipant(currentHost);
     }
 
     target.isHost = true;
     if (target.role === "spectator") {
       target.role = "host";
     }
+    this.syncParticipant(target);
 
     this.hostId = newHostId;
     this.state.hostId = newHostId;
@@ -906,7 +1096,8 @@ export class Room {
     this.assertHost(hostId);
 
     if (this.gameType === "poker") {
-      const result = PartialPokerConfigSchema.safeParse(partialConfig);
+      const normalized = this.normalizePokerConfig(partialConfig as Record<string, any>);
+      const result = PartialPokerConfigSchema.safeParse(normalized);
       if (!result.success) {
         throw new EngineError("ILLEGAL_ACTION", `Invalid poker config: ${result.error.message}`);
       }
@@ -1426,7 +1617,7 @@ export class Room {
     this.broadcastSnapshot();
   }
 
-  /** Capture remaining ms and clear Node timers without clearing deadlines. */
+  /** Capture remaining ms and clear Node timers without losing remaining durations. */
   private _pauseTimers(): void {
     const now = Date.now();
     const betRemaining =
@@ -1438,6 +1629,14 @@ export class Room {
     const insuranceRemaining =
       this.insuranceTimer && this.state.insuranceDeadline
         ? Math.max(0, this.state.insuranceDeadline - now)
+        : null;
+    const handSummaryDeadline = (this.state as any).handSummaryDeadline as number | null | undefined;
+    const handSummaryRemaining =
+      this.gameType === "poker" &&
+      (this.state.phase as string) === "hand_summary" &&
+      this.actionTimer &&
+      handSummaryDeadline
+        ? Math.max(0, handSummaryDeadline - now)
         : null;
 
     // Clear the Node timer handles
@@ -1453,6 +1652,10 @@ export class Room {
       clearTimeout(this.insuranceTimer);
       this.insuranceTimer = null;
     }
+    if (this.autoDealerTurnTimer) {
+      clearTimeout(this.autoDealerTurnTimer);
+      this.autoDealerTurnTimer = null;
+    }
 
     this.state = {
       ...this.state,
@@ -1460,19 +1663,29 @@ export class Room {
         bet: betRemaining,
         action: actionRemaining,
         insurance: insuranceRemaining,
+        handSummary: handSummaryRemaining,
       },
       // Null out deadlines while paused so clients don't show a running countdown
       betDeadline: null,
       actionDeadline: null,
       insuranceDeadline: null,
-    };
+      ...(this.gameType === "poker" ? { handSummaryDeadline: null } : {}),
+    } as any;
   }
 
   public resume(hostId: string): void {
     this.assertHost(hostId);
     if (!this.state.isPaused) return;
 
-    const remaining = this.state.pausedRemainingMs;
+    const rawRemaining = this.state.pausedRemainingMs as
+      | {
+          bet: number | null;
+          action: number | null;
+          insurance: number | null;
+          handSummary?: number | null;
+        }
+      | null
+      | undefined;
 
     this.state = {
       ...this.state,
@@ -1482,45 +1695,97 @@ export class Room {
       tableStatusMessage: null,
     };
 
-    // Restore timers from saved remaining durations
-    if (remaining) {
-      const now = Date.now();
+    const now = Date.now();
 
-      if (remaining.bet !== null) {
-        if (remaining.bet <= 0) {
-          // Already expired — process safe default immediately
+    // Restore timers from saved remaining durations
+    if (rawRemaining) {
+      if (rawRemaining.bet !== null && rawRemaining.bet !== undefined) {
+        if (rawRemaining.bet <= 0) {
           setTimeout(() => this.handleBetTimerExpiry(), 0);
         } else {
-          this.state = { ...this.state, betDeadline: now + remaining.bet };
-          this.betTimer = setTimeout(() => this.handleBetTimerExpiry(), remaining.bet);
+          this.state = { ...this.state, betDeadline: now + rawRemaining.bet };
+          this.betTimer = setTimeout(() => this.handleBetTimerExpiry(), rawRemaining.bet);
         }
       }
 
-      if (remaining.action !== null) {
-        if (remaining.action <= 0) {
-          setTimeout(() => this.handleActionTimerExpiry(), 0);
+      if (rawRemaining.action !== null && rawRemaining.action !== undefined) {
+        if (this.gameType === "poker") {
+          if (rawRemaining.action <= 0) {
+            setTimeout(() => this.handlePokerActionTimeout(), 0);
+          } else {
+            this.state = { ...this.state, actionDeadline: now + rawRemaining.action };
+            this.actionTimer = setTimeout(
+              () => this.handlePokerActionTimeout(),
+              rawRemaining.action,
+            );
+          }
         } else {
-          this.state = { ...this.state, actionDeadline: now + remaining.action };
-          this.actionTimer = setTimeout(() => this.handleActionTimerExpiry(), remaining.action);
+          if (rawRemaining.action <= 0) {
+            setTimeout(() => this.handleActionTimerExpiry(), 0);
+          } else {
+            this.state = { ...this.state, actionDeadline: now + rawRemaining.action };
+            this.actionTimer = setTimeout(
+              () => this.handleActionTimerExpiry(),
+              rawRemaining.action,
+            );
+          }
         }
       }
 
-      if (remaining.insurance !== null) {
-        if (remaining.insurance <= 0) {
+      if (rawRemaining.insurance !== null && rawRemaining.insurance !== undefined) {
+        if (rawRemaining.insurance <= 0) {
           setTimeout(() => this.handleInsuranceTimerExpiry(), 0);
         } else {
           this.state = {
             ...this.state,
-            insuranceDeadline: now + remaining.insurance,
+            insuranceDeadline: now + rawRemaining.insurance,
           };
           this.insuranceTimer = setTimeout(
             () => this.handleInsuranceTimerExpiry(),
-            remaining.insurance,
+            rawRemaining.insurance,
+          );
+        }
+      }
+
+      if (
+        this.gameType === "poker" &&
+        (this.state.phase as string) === "hand_summary" &&
+        rawRemaining.handSummary !== null &&
+        rawRemaining.handSummary !== undefined
+      ) {
+        if (rawRemaining.handSummary <= 0) {
+          setTimeout(() => this.triggerPokerNextHand(), 0);
+        } else {
+          (this.state as any).handSummaryDeadline = now + rawRemaining.handSummary;
+          this.actionTimer = setTimeout(
+            () => this.triggerPokerNextHand(),
+            rawRemaining.handSummary,
           );
         }
       }
     }
 
+    // Safety fallback: ensure active timers restart if phase expects one and none was restored
+    if (this.gameType === "poker") {
+      if (
+        (this.state.phase as string) === "betting" &&
+        !this.actionTimer &&
+        (this.state as any).toActPlayerId &&
+        this.config.actionTimerSec
+      ) {
+        this.setupPokerActionTimer();
+      } else if (
+        (this.state.phase as string) === "hand_summary" &&
+        !this.actionTimer &&
+        this.getPokerEligibleCount() >= 2
+      ) {
+        this.setupPokerNextHandTimer();
+      }
+    } else if (this.state.phase === "dealer_turn" && this.config.dealerDrawMode === "auto") {
+      this.runAutoDealerTurn();
+    }
+
+    this.updateTableStatusMessage();
     this.addActivity("Game resumed by host");
     this.broadcastSnapshot();
   }
@@ -1544,8 +1809,20 @@ export class Room {
       const name = p?.displayName ?? targetId;
       this.addActivity(`[Host Recovery] Force-advancing turn for ${name}`);
       const action = this.gameModule.onTimeout?.(this.state, targetId);
-      if (action) {
+      if (!action) return;
+
+      const wasPaused = this.state.isPaused;
+      if (wasPaused) {
+        this.state = { ...this.state, isPaused: false };
+      }
+      try {
         this.dispatchEngineAction(action);
+      } finally {
+        if (wasPaused) {
+          this._pauseTimers();
+          this.state = { ...this.state, isPaused: true, tableStatusMessage: "Game paused by host" };
+          this.broadcastSnapshot();
+        }
       }
       return;
     }
@@ -1576,14 +1853,16 @@ export class Room {
       });
     } finally {
       if (wasPaused) {
-        this.state = { ...this.state, isPaused: true };
+        this._pauseTimers();
+        this.state = { ...this.state, isPaused: true, tableStatusMessage: "Game paused by host" };
+        this.broadcastSnapshot();
       }
     }
   }
 
   /**
-   * Host cancels the current round and refunds all bets.
-   * Returns the table to the betting phase without incrementing round count.
+   * Host cancels / reverses the current or most recent round and refunds all bets.
+   * Works both mid-round and between rounds (round_summary / hand_summary), never leaving the table stuck.
    */
   public cancelRoundRefund(hostId: string): void {
     this.assertHost(hostId);
@@ -1593,25 +1872,77 @@ export class Room {
       if (pokerState.phase === "lobby") {
         throw new EngineError("WRONG_PHASE", "No hand in progress to cancel");
       }
+
       this._clearGameTimers();
       const stacks = new Map(this.state.stacks);
       const players = new Map<string, any>(pokerState.players || []);
-      for (const [pid, p] of players.entries()) {
-        const player = { ...(p as object) } as any;
-        const refund = (player.committedThisHand || 0) + (player.committedThisRound || 0);
-        if (refund > 0) {
-          stacks.set(pid, (stacks.get(pid) ?? 0) + refund);
-          player.stack = (player.stack ?? 0) + refund;
+      const baseline = this.pokerHandBaseline;
+      let handHistory = [...(pokerState.handHistory ?? [])];
+      let handNumber = pokerState.handNumber ?? 0;
+      let dealerButtonSeat = pokerState.dealerButtonSeat ?? 1;
+
+      if (pokerState.phase === "hand_summary") {
+        if (baseline?.settledDeltas) {
+          for (const [pid, delta] of baseline.settledDeltas.entries()) {
+            const restored = Math.max(0, (stacks.get(pid) ?? 0) - delta);
+            stacks.set(pid, restored);
+            const p = players.get(pid);
+            if (p) {
+              players.set(pid, { ...p, stack: restored });
+            }
+          }
+          handNumber = baseline.handNumberBefore;
+          dealerButtonSeat = baseline.dealerButtonSeatBefore;
+          handHistory = handHistory.slice(handHistory.length - baseline.handHistoryLength);
+          const cancelledHandNum = baseline.handNumberBefore + 1;
+          this.transactions = this.transactions.filter(
+            (tx) =>
+              !(
+                tx.roundNumber === cancelledHandNum &&
+                (tx.type === "round_win" || tx.type === "round_loss")
+              ),
+          );
+          baseline.settledDeltas = null;
+        }
+      } else {
+        for (const [pid, p] of players.entries()) {
+          const player = { ...(p as object) } as any;
+          if (baseline?.preHandStacks.has(pid)) {
+            const preStack = baseline.preHandStacks.get(pid)!;
+            stacks.set(pid, preStack);
+            player.stack = preStack;
+          } else {
+            const refund = player.committedThisHand || 0;
+            if (refund > 0) {
+              const restored = (stacks.get(pid) ?? 0) + refund;
+              stacks.set(pid, restored);
+              player.stack = restored;
+            }
+          }
           player.committedThisHand = 0;
           player.committedThisRound = 0;
+          players.set(pid, player);
         }
+        if (baseline) {
+          handNumber = baseline.handNumberBefore;
+          dealerButtonSeat = baseline.dealerButtonSeatBefore;
+        }
+      }
+
+      for (const [pid, p] of players.entries()) {
+        const player = { ...(p as object) } as any;
+        player.committedThisHand = 0;
+        player.committedThisRound = 0;
         player.holeCards = [];
         player.hasFolded = false;
         player.isAllIn = false;
         player.actedThisRound = false;
-        player.hasSeenCards = false;
+        player.showedCards = false;
         players.set(pid, player);
       }
+
+      this.roundCount = handNumber;
+      this.pokerHandBaseline = null;
 
       this.state = {
         ...this.state,
@@ -1619,16 +1950,38 @@ export class Room {
         players,
         phase: "hand_summary",
         street: null,
+        handNumber,
+        dealerButtonSeat,
+        smallBlindSeat: null,
+        bigBlindSeat: null,
         communityCards: [],
+        burnedCards: [],
         pots: [],
         currentBet: 0,
         toActPlayerId: null,
         winners: null,
+        handHistory,
         actionDeadline: null,
+        handSummaryDeadline: null,
+        pausedRemainingMs: null,
+        isPaused: false,
+        waitingForReconnect: null,
         tableStatusMessage: "Hand cancelled by host — all bets refunded",
       } as any;
 
-      this.addActivity("[Host Recovery] Hand cancelled by host — all bets refunded");
+      this.applyQueuedChipActions();
+      this.applyPendingUnseats();
+
+      if (this.getPokerEligibleCount() >= 2) {
+        this.setupPokerNextHandTimer();
+      } else {
+        this.state = {
+          ...this.state,
+          tableStatusMessage: "Hand cancelled — waiting for at least 2 active players",
+        };
+      }
+
+      this.addActivity("[Host Recovery] Hand cancelled/reversed by host — all bets refunded");
       this.broadcastSnapshot();
       return;
     }
@@ -1648,35 +2001,72 @@ export class Room {
       throw new EngineError("WRONG_PHASE", "No round in progress to cancel");
     }
 
-    // Clear active timers
     this._clearGameTimers();
 
-    // Refund all bets (avoiding duplicate refund of lockedBets and in-play hands)
     const stacks = new Map(this.state.stacks);
-    const refundedPlayers = new Set<string>();
+    let dealerBank = this.state.dealerBank;
+    let shoe = this.state.shoe;
+    let stackHistory = this.state.stackHistory;
+    const baseline = this.bjRoundBaseline;
 
-    if (this.state.hands.length > 0) {
+    if (phase === "betting") {
+      for (const [pid, bet] of this.state.lockedBets.entries()) {
+        stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
+      }
+    } else if (phase === "round_summary") {
+      if (baseline?.settledDeltas) {
+        for (const [pid, delta] of baseline.settledDeltas.entries()) {
+          stacks.set(pid, Math.max(0, (stacks.get(pid) ?? 0) - delta));
+        }
+        if (baseline.settledDealerBankDelta !== null) {
+          dealerBank -= baseline.settledDealerBankDelta;
+        }
+        shoe = baseline.shoeBeforeRound;
+        stackHistory = stackHistory.slice(0, baseline.stackHistoryLength);
+        const reversedRound = baseline.roundNumber;
+        this.transactions = this.transactions.filter(
+          (tx) =>
+            !(
+              tx.roundNumber === reversedRound &&
+              (tx.type === "round_win" || tx.type === "round_loss" || tx.type === "round_push")
+            ),
+        );
+        baseline.settledDeltas = null;
+      }
+    } else if (baseline) {
+      for (const [pid, preBalance] of baseline.preRoundPlayerBalances.entries()) {
+        stacks.set(pid, preBalance);
+      }
+      dealerBank = baseline.dealerBankBeforeRound;
+      shoe = baseline.shoeBeforeRound;
+      stackHistory = stackHistory.slice(0, baseline.stackHistoryLength);
+    } else {
+      const refundedPlayers = new Set<string>();
       for (const hand of this.state.hands) {
-        if (hand.result === "pending") {
-          const total = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
-          stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + total);
-          refundedPlayers.add(hand.playerId);
+        const total = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
+        stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + total);
+        refundedPlayers.add(hand.playerId);
+      }
+      for (const [pid, bet] of this.state.lockedBets.entries()) {
+        if (!refundedPlayers.has(pid)) {
+          stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
         }
       }
     }
 
-    for (const [pid, bet] of this.state.lockedBets.entries()) {
-      if (!refundedPlayers.has(pid)) {
-        stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
-      }
-    }
+    this.bjRoundBaseline = null;
 
     this.state = {
       ...this.state,
       stacks,
+      dealerBank,
+      shoe,
+      stackHistory,
       phase: "betting",
       hands: [],
       dealerHand: null,
+      dealerHoleCardRevealed: false,
+      dealerHasBlackjack: false,
       pendingBets: new Map(),
       lockedBets: new Map(),
       sittingOut: new Set(),
@@ -1688,11 +2078,16 @@ export class Room {
       insuranceDeadline: null,
       pausedRemainingMs: null,
       isPaused: false,
+      waitingForReconnect: null,
       tableStatusMessage: null,
     };
 
-    this.addActivity("[Host Recovery] Round cancelled by host — all bets refunded");
+    this.applyQueuedChipActions();
+    this.applyPendingUnseats();
+
+    this.addActivity("[Host Recovery] Round cancelled/reversed by host — all bets refunded");
     this.setupBetTimer();
+    this.updateTableStatusMessage();
     this.broadcastSnapshot();
   }
 
@@ -1716,12 +2111,14 @@ export class Room {
       const old = this.participants.get(this.dealerId);
       if (old && old.role === "dealer") {
         old.role = old.isHost ? "host" : "spectator";
+        this.syncParticipant(old);
       }
     }
 
     newDealer.role = "dealer";
     this.dealerId = newDealerId;
     this.state.dealerId = newDealerId;
+    this.syncParticipant(newDealer);
 
     this.addActivity(`[Host Recovery] ${newDealer.displayName} is now the Dealer`);
     this.broadcastSnapshot();
@@ -1735,7 +2132,7 @@ export class Room {
     this.assertHost(hostId);
 
     // End session if active
-    if (this.state.isSessionStarted) {
+    if (this.state.isSessionStarted || this.state.phase !== "lobby") {
       this.endSessionInternal("Host closed the table");
     }
 
@@ -1753,15 +2150,14 @@ export class Room {
 
     this.addActivity("Host closed the table");
 
-    // Remove from room manager immediately
+    // Defer socket disconnect slightly so ack and room:closed flush cleanly,
+    // while removing the room from RoomManager immediately.
+    this.deferSocketDisconnect = true;
     if (this.onEmptyRoomDestroy) {
       this.onEmptyRoomDestroy(this.roomCode);
-    }
-
-    // Defer socket teardown slightly so ack and room:closed flush cleanly
-    setTimeout(() => {
+    } else {
       this.destroy();
-    }, 50);
+    }
   }
 
   public endSession(hostId: string): void {
@@ -1773,47 +2169,117 @@ export class Room {
   private endSessionInternal(reason?: string): void {
     this._clearGameTimers();
 
-    // Refund any chips that were in locked bets or pending in-play hands
     const stacks = new Map(this.state.stacks);
-    const refundedPlayers = new Set<string>();
 
-    if (this.state.hands.length > 0) {
-      for (const hand of this.state.hands) {
-        if (hand.result === "pending") {
-          const inPlay = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
-          stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + inPlay);
-          refundedPlayers.add(hand.playerId);
+    if (this.gameType === "poker") {
+      const pokerState = this.state as any;
+      const players = new Map<string, any>(pokerState.players ?? []);
+      const isMidHand =
+        pokerState.phase !== "lobby" && pokerState.phase !== "hand_summary";
+
+      for (const [pid, p] of players.entries()) {
+        const player = { ...(p as object) } as any;
+        if (isMidHand) {
+          if (this.pokerHandBaseline?.preHandStacks.has(pid)) {
+            const restored = this.pokerHandBaseline.preHandStacks.get(pid)!;
+            stacks.set(pid, restored);
+            player.stack = restored;
+          } else {
+            const refund = player.committedThisHand || 0;
+            const restored = (stacks.get(pid) ?? player.stack ?? 0) + refund;
+            stacks.set(pid, restored);
+            player.stack = restored;
+          }
+        }
+        player.holeCards = [];
+        player.committedThisRound = 0;
+        player.committedThisHand = 0;
+        player.hasFolded = false;
+        player.isAllIn = false;
+        player.actedThisRound = false;
+        player.showedCards = false;
+        players.set(pid, player);
+      }
+
+      this.state = {
+        ...this.state,
+        stacks,
+        players,
+        phase: "lobby",
+        street: null,
+        smallBlindSeat: null,
+        bigBlindSeat: null,
+        communityCards: [],
+        burnedCards: [],
+        pots: [],
+        currentBet: 0,
+        toActPlayerId: null,
+        winners: null,
+        sittingOut: new Set(),
+        actionDeadline: null,
+        handSummaryDeadline: null,
+        pausedRemainingMs: null,
+        isSessionStarted: false,
+        isPaused: false,
+        tableStatusMessage: null,
+        waitingForReconnect: null,
+      } as any;
+    } else {
+      const phase = this.state.phase;
+      if (phase === "betting" && this.state.lockedBets) {
+        for (const [pid, bet] of this.state.lockedBets.entries()) {
+          stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
+        }
+      } else if (phase !== "lobby" && phase !== "round_summary") {
+        if (this.bjRoundBaseline) {
+          for (const [pid, preBal] of this.bjRoundBaseline.preRoundPlayerBalances.entries()) {
+            stacks.set(pid, preBal);
+          }
+          this.state = { ...this.state, dealerBank: this.bjRoundBaseline.dealerBankBeforeRound };
+        } else {
+          const refundedPlayers = new Set<string>();
+          for (const hand of this.state.hands ?? []) {
+            const inPlay = hand.bet + (hand.doubleBet || 0) + (hand.insuranceBet || 0);
+            stacks.set(hand.playerId, (stacks.get(hand.playerId) ?? 0) + inPlay);
+            refundedPlayers.add(hand.playerId);
+          }
+          for (const [pid, bet] of (this.state.lockedBets ?? new Map()).entries()) {
+            if (!refundedPlayers.has(pid)) {
+              stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
+            }
+          }
         }
       }
+
+      this.state = {
+        ...this.state,
+        stacks,
+        phase: "lobby",
+        isSessionStarted: false,
+        isPaused: false,
+        hands: [],
+        dealerHand: null,
+        dealerHoleCardRevealed: false,
+        dealerHasBlackjack: false,
+        pendingBets: new Map(),
+        lockedBets: new Map(),
+        sittingOut: new Set(),
+        insurancePending: new Set(),
+        insuranceDecisions: new Map(),
+        activeHandId: null,
+        betDeadline: null,
+        actionDeadline: null,
+        insuranceDeadline: null,
+        pausedRemainingMs: null,
+        tableStatusMessage: null,
+        waitingForReconnect: null,
+      };
     }
 
-    for (const [pid, bet] of this.state.lockedBets.entries()) {
-      if (!refundedPlayers.has(pid)) {
-        stacks.set(pid, (stacks.get(pid) ?? 0) + bet);
-      }
-    }
-
-    this.state = {
-      ...this.state,
-      stacks,
-      phase: "lobby",
-      isSessionStarted: false,
-      isPaused: false,
-      hands: [],
-      dealerHand: null,
-      pendingBets: new Map(),
-      lockedBets: new Map(),
-      sittingOut: new Set(),
-      insurancePending: new Set(),
-      insuranceDecisions: new Map(),
-      activeHandId: null,
-      betDeadline: null,
-      actionDeadline: null,
-      insuranceDeadline: null,
-      pausedRemainingMs: null,
-      tableStatusMessage: null,
-      waitingForReconnect: null,
-    };
+    this.bjRoundBaseline = null;
+    this.pokerHandBaseline = null;
+    this.pendingUnseatPlayerIds.clear();
+    this.queuedChipActions = [];
 
     // Persist session summary and player results per Brief Section 11
     const roomCode = this.roomCode;
@@ -1863,6 +2329,7 @@ export class Room {
     if (participant) {
       participant.userId = userId;
       participant.isGuest = false;
+      this.syncParticipant(participant);
       this.broadcastSnapshot();
     }
   }
@@ -1916,7 +2383,6 @@ export class Room {
       case "poker:raise":
       case "poker:allIn":
       case "poker:showCards":
-      case "poker:seeCards":
       case "poker:sitOut":
       case "poker:sitIn": {
         if ((action as any).playerId !== playerId) {
@@ -2071,6 +2537,54 @@ export class Room {
     const prevPhase = this.state.phase;
     const prevActiveHandId = this.state.activeHandId;
     const prevToActPlayerId = (this.state as any).toActPlayerId;
+
+    // Capture round/hand baseline BEFORE reducer mutates stacks/dealerBank for exact reversal
+    if (this.gameType === "blackjack" && action.type === "dealer:deal") {
+      const preRoundPlayerBalances = new Map<string, number>();
+      for (const pid of this.participants.keys()) {
+        preRoundPlayerBalances.set(
+          pid,
+          (this.state.stacks.get(pid) ?? 0) + (this.state.lockedBets?.get(pid) ?? 0),
+        );
+      }
+      this.bjRoundBaseline = {
+        roundNumber: this.state.roundNumber,
+        dealerBankBeforeRound: this.state.dealerBank,
+        preRoundPlayerBalances,
+        shoeBeforeRound: {
+          ...this.state.shoe,
+          cards: [...this.state.shoe.cards],
+        },
+        stackHistoryLength: this.state.stackHistory.length,
+        transactionsLength: this.transactions.length,
+        settledDeltas: null,
+        settledDealerBankDelta: null,
+      };
+    } else if (
+      this.gameType === "poker" &&
+      (action.type === "host:startSession" ||
+        action.type === "poker:startHand" ||
+        action.type === "poker:nextHand")
+    ) {
+      const pokerState = this.state as any;
+      const preHandStacks = new Map<string, number>();
+      for (const [pid, s] of this.state.stacks.entries()) {
+        preHandStacks.set(pid, s);
+      }
+      if (pokerState.players) {
+        for (const [pid, p] of pokerState.players.entries()) {
+          preHandStacks.set(pid, p.stack);
+        }
+      }
+      this.pokerHandBaseline = {
+        handNumberBefore: pokerState.handNumber ?? 0,
+        dealerButtonSeatBefore: pokerState.dealerButtonSeat ?? 1,
+        preHandStacks,
+        handHistoryLength: (pokerState.handHistory ?? []).length,
+        settledDeltas: null,
+      };
+    }
+
     const { state: nextState, events } = this.gameModule.reduce(this.state, action);
     this.state = nextState;
 
@@ -2137,15 +2651,28 @@ export class Room {
       if (np === "betting") {
         this.clearActionTimer();
         this.applyQueuedChipActions();
-        this.setupPokerActionTimer();
+        if (!this.state.isPaused) {
+          this.setupPokerActionTimer();
+        }
       } else if (np === "hand_summary") {
         this.clearActionTimer();
         this.roundCount = (this.state as any).handNumber ?? 0;
-        this.applyQueuedChipActions();
-        this.setupPokerNextHandTimer();
+
+        const pokerState = this.state as any;
+        if (this.pokerHandBaseline) {
+          const deltas = new Map<string, number>();
+          if (pokerState.players) {
+            for (const [pid, p] of pokerState.players.entries()) {
+              const pre = this.pokerHandBaseline.preHandStacks.get(pid);
+              if (pre !== undefined) {
+                deltas.set(pid, p.stack - pre);
+              }
+            }
+          }
+          this.pokerHandBaseline.settledDeltas = deltas;
+        }
 
         // Record poker hand transactions for financial ledger
-        const pokerState = this.state as any;
         const winners: any[] = pokerState.winners ?? [];
         const winnerMap = new Map<string, { amount: number; handName: string }>();
         for (const w of winners) {
@@ -2193,6 +2720,12 @@ export class Room {
             }
           }
         }
+
+        this.applyQueuedChipActions();
+        this.applyPendingUnseats();
+        if (!this.state.isPaused) {
+          this.setupPokerNextHandTimer();
+        }
       }
       return;
     }
@@ -2201,26 +2734,40 @@ export class Room {
       this.clearActionTimer();
       // Apply any queued chip actions before starting the next betting phase
       this.applyQueuedChipActions();
-      this.setupBetTimer();
+      if (!this.state.isPaused) {
+        this.setupBetTimer();
+      }
     } else if (newPhase === "insurance") {
       this.clearBetTimer();
-      this.setupInsuranceTimer();
+      if (!this.state.isPaused) {
+        this.setupInsuranceTimer();
+      }
     } else if (newPhase === "player_turns") {
       this.clearBetTimer();
       this.clearInsuranceTimer();
-      this.setupActionTimer();
+      if (!this.state.isPaused) {
+        this.setupActionTimer();
+      }
     } else if (newPhase === "dealer_turn") {
       this.clearActionTimer();
       // Auto dealer draw mode
-      if (this.config.dealerDrawMode === "auto") {
+      if (this.config.dealerDrawMode === "auto" && !this.state.isPaused) {
         this.runAutoDealerTurn();
       }
     } else if (newPhase === "round_summary") {
       this.roundCount = this.state.roundNumber;
       this._clearGameTimers();
 
-      // Apply queued chip actions at round summary
-      this.applyQueuedChipActions();
+      if (this.bjRoundBaseline) {
+        const settledDeltas = new Map<string, number>();
+        for (const [pid, preBal] of this.bjRoundBaseline.preRoundPlayerBalances.entries()) {
+          const postBal = this.state.stacks.get(pid) ?? preBal;
+          settledDeltas.set(pid, postBal - preBal);
+        }
+        this.bjRoundBaseline.settledDeltas = settledDeltas;
+        this.bjRoundBaseline.settledDealerBankDelta =
+          this.state.dealerBank - this.bjRoundBaseline.dealerBankBeforeRound;
+      }
 
       for (const hand of this.state.hands) {
         const participant = this.participants.get(hand.playerId);
@@ -2255,10 +2802,19 @@ export class Room {
           timestamp: Date.now(),
         });
       }
+
+      // Apply queued chip actions & pending unseats after settlement
+      this.applyQueuedChipActions();
+      this.applyPendingUnseats();
     }
   }
 
   private runAutoDealerTurn(): void {
+    if (this.autoDealerTurnTimer) {
+      clearTimeout(this.autoDealerTurnTimer);
+      this.autoDealerTurnTimer = null;
+    }
+
     // If pacing is enabled, do step by step with beats; otherwise execute immediately
     if (!this.pacingEnabled) {
       this.dispatchEngineAction({
@@ -2268,8 +2824,9 @@ export class Room {
       return;
     }
 
-    setTimeout(() => {
-      if (this.isDestroyed || this.state.phase !== "dealer_turn") return;
+    this.autoDealerTurnTimer = setTimeout(() => {
+      this.autoDealerTurnTimer = null;
+      if (this.isDestroyed || this.state.isPaused || this.state.phase !== "dealer_turn") return;
       this.dispatchEngineAction({
         type: "dealer:reveal",
         dealerId: this.dealerId ?? this.hostId,
@@ -2309,7 +2866,10 @@ export class Room {
           msg = "Showdown!";
           break;
         case "hand_summary":
-          msg = "Hand complete";
+          msg =
+            this.getPokerEligibleCount() < 2
+              ? "Waiting for at least 2 active players"
+              : "Hand complete";
           break;
       }
       this.state = { ...this.state, tableStatusMessage: msg };
@@ -2326,7 +2886,7 @@ export class Room {
       case "betting": {
         const lockedCount = this.state.lockedBets.size;
         const seatedCount = this.state.seatedPlayers.size;
-        if (lockedCount === seatedCount) {
+        if (seatedCount > 0 && lockedCount === seatedCount) {
           msg = "Waiting for dealer to deal";
         } else {
           msg = `Waiting for players to place bets (${lockedCount}/${seatedCount} ready)`;
@@ -2527,20 +3087,33 @@ export class Room {
     }
   }
 
+  private triggerPokerNextHand(): void {
+    if (this.isDestroyed || (this.state.phase as string) !== "hand_summary" || this.state.isPaused) {
+      return;
+    }
+    try {
+      this.dispatchEngineAction({ type: "poker:nextHand" });
+    } catch {
+      this.actionTimer = null;
+      (this.state as any).handSummaryDeadline = null;
+      this.updateTableStatusMessage();
+      this.broadcastSnapshot();
+    }
+  }
+
   private setupPokerNextHandTimer(): void {
     this.clearActionTimer();
     const pokerState = this.state as any;
+    if (this.getPokerEligibleCount() < 2) {
+      pokerState.handSummaryDeadline = null;
+      return;
+    }
     const delaySec = (this.config as any).autoNextHandDelaySec ?? 5;
     if (!delaySec || delaySec <= 0) return;
 
     pokerState.handSummaryDeadline = Date.now() + delaySec * 1000;
     this.actionTimer = setTimeout(() => {
-      if (this.isDestroyed || (this.state.phase as string) !== "hand_summary" || this.state.isPaused) return;
-      try {
-        this.dispatchEngineAction({ type: "poker:nextHand" });
-      } catch {
-        // Ignore
-      }
+      this.triggerPokerNextHand();
     }, delaySec * 1000);
   }
 
@@ -2549,6 +3122,10 @@ export class Room {
     this.clearBetTimer();
     this.clearActionTimer();
     this.clearInsuranceTimer();
+    if (this.autoDealerTurnTimer) {
+      clearTimeout(this.autoDealerTurnTimer);
+      this.autoDealerTurnTimer = null;
+    }
   }
 
   private clearAllTimers(): void {
@@ -2571,9 +3148,20 @@ export class Room {
 
     const seat = p.seat;
     p.seat = null;
+    if (p.role === "player") {
+      p.role = p.isHost ? "host" : "spectator";
+    }
     const seatedPlayers = new Map(this.state.seatedPlayers);
     seatedPlayers.delete(seat);
     this.state = { ...this.state, seatedPlayers };
+    this.syncParticipant(p);
+
+    if (
+      this.gameType === "poker" &&
+      ((this.state.phase as string) === "lobby" || (this.state.phase as string) === "hand_summary")
+    ) {
+      (this.state as any).players?.delete(playerId);
+    }
 
     this.addActivity(`${p.displayName}'s seat hold expired`);
     this.broadcastSnapshot();
@@ -2688,6 +3276,9 @@ export class Room {
           ...new Set(this.queuedChipActions.map((a) => a.target)),
         ];
       }
+      if (this.pendingUnseatPlayerIds.size > 0) {
+        view.pendingUnseatPlayers = Array.from(this.pendingUnseatPlayerIds);
+      }
       socket.emit("snapshot", {
         type: "snapshot",
         gameType: this.gameType,
@@ -2762,19 +3353,30 @@ export class Room {
   }
 
   public destroy(): void {
+    if (this.isDestroyed) return;
     this.isDestroyed = true;
     this.clearAllTimers();
     dbService.deleteRoomSnapshot(this.roomCode).catch(() => {});
-    for (const socket of this.sockets.values()) {
-      try {
-        socket.disconnect(true);
-      } catch {
-        // Ignore
-      }
-    }
+    const sockets = Array.from(this.sockets.values());
     this.sockets.clear();
     this.socketToPlayer.clear();
     this.participants.clear();
+
+    const disconnectAll = () => {
+      for (const socket of sockets) {
+        try {
+          socket.disconnect(true);
+        } catch {
+          // Ignore
+        }
+      }
+    };
+
+    if (this.deferSocketDisconnect) {
+      setTimeout(disconnectAll, 25);
+    } else {
+      disconnectAll();
+    }
   }
 
   // ─── Serialization / Snapshot ──────────────────────────────────────────────
@@ -2880,6 +3482,7 @@ export class Room {
 
     for (const [id, p] of data.participants) {
       room.participants.set(id, p);
+      room.state.participants.set(id, { ...p });
     }
     for (const [id, tok] of data.playerTokens) {
       room.playerTokens.set(id, tok);
@@ -2912,7 +3515,27 @@ export class Room {
   /** After deserialization, recreate/expire overdue timers safely. */
   private _recreateTimersAfterRestore(): void {
     const now = Date.now();
-    const phase = this.state.phase;
+    const phase = this.state.phase as string;
+
+    if (this.gameType === "poker") {
+      const pokerState = this.state as any;
+      if (phase === "betting" && pokerState.actionDeadline !== null) {
+        const remaining = pokerState.actionDeadline - now;
+        if (remaining <= 0) {
+          setTimeout(() => this.handlePokerActionTimeout(), 0);
+        } else {
+          this.actionTimer = setTimeout(() => this.handlePokerActionTimeout(), remaining);
+        }
+      } else if (phase === "hand_summary" && pokerState.handSummaryDeadline !== null) {
+        const remaining = pokerState.handSummaryDeadline - now;
+        if (remaining <= 0) {
+          setTimeout(() => this.triggerPokerNextHand(), 0);
+        } else {
+          this.actionTimer = setTimeout(() => this.triggerPokerNextHand(), remaining);
+        }
+      }
+      return;
+    }
 
     if (phase === "betting" && this.state.betDeadline !== null) {
       const remaining = this.state.betDeadline - now;

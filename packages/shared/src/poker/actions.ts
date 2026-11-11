@@ -12,7 +12,6 @@ export type PokerAction =
   | { type: "poker:raise"; playerId: string; to: number }
   | { type: "poker:allIn"; playerId: string }
   | { type: "poker:showCards"; playerId: string }
-  | { type: "poker:seeCards"; playerId: string }
   | { type: "poker:sitOut"; playerId: string }
   | { type: "poker:sitIn"; playerId: string }
   | { type: "poker:dealNextStreet"; actorId?: string }
@@ -91,7 +90,6 @@ export type PokerEvent =
       amount: number;
       newBalance: number;
     }
-  | { type: "playerSeenCards"; playerId: string }
   | { type: "sessionStarted" };
 
 export interface PokerReducerResult<S = any, E = any> {

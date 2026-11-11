@@ -58,17 +58,24 @@ export const PokerTableScreen: React.FC = () => {
     pokerRaise,
     pokerAllIn,
     pokerNextHand,
+    pokerSitIn,
     resume,
     rebuyRequest,
   } = useGameStore.getState();
 
-  if (!currentView || currentView.gameType !== "poker") return null;
+  const isPokerView = Boolean(currentView && currentView.gameType === "poker");
+  const pokerView = isPokerView ? (currentView as ClientPokerGameView) : null;
 
-  const myPlayer = currentView.players.find((p) => p.id === myPlayerId) ?? null;
-  const mySeat = myPlayer?.seatNumber ?? null;
+  const myParticipant = pokerView?.participants.find((p) => p.id === myPlayerId) ?? null;
+  const myPlayer = pokerView?.players.find((p) => p.id === myPlayerId) ?? null;
+  const mySeat = myParticipant?.seat ?? myPlayer?.seatNumber ?? null;
   const isSpectator = mySeat === null;
-  const isHost = currentView.hostId === myPlayerId;
-  const maxSeats = ((currentView.config as any).maxSeats ?? 9) as number;
+  const isHost = pokerView?.hostId === myPlayerId;
+  const maxSeats = (
+    (pokerView?.config as any)?.maxPlayerSeats ??
+    (pokerView?.config as any)?.maxSeats ??
+    9
+  ) as number;
 
   // Generate seats 1..maxSeats
   const allSeatNumbers: SeatNumber[] = useMemo(() => {
@@ -88,67 +95,98 @@ export const PokerTableScreen: React.FC = () => {
     ];
   }, [allSeatNumbers, mySeat]);
 
-  // Compute hero turn & bet requirements
-  const isMyTurn = myPlayer?.isTurn ?? false;
-  const heroCommittedThisRound = myPlayer?.committedThisRound ?? 0;
-  const toCall = Math.max(0, currentView.currentBet - heroCommittedThisRound);
-  const minRaise = currentView.currentBet > 0
-    ? currentView.currentBet * 2
-    : currentView.config.bigBlind * 2;
-
-  const totalPot = currentView.pots.reduce((sum, p) => sum + p.amount, 0);
-
   // Audio deal cues when hand starts or community street advances
-  const prevHandRef = useRef(currentView.handNumber);
-  const prevStreetRef = useRef(currentView.street);
+  const handNumber = pokerView?.handNumber ?? 0;
+  const street = pokerView?.street ?? null;
+  const prevHandRef = useRef(handNumber);
+  const prevStreetRef = useRef(street);
 
   useEffect(() => {
-    // New hand dealt: play sequential casino card deals around table
-    if (currentView.handNumber > prevHandRef.current && currentView.players.length > 0) {
-      prevHandRef.current = currentView.handNumber;
-      const seatedCount = currentView.players.filter((p) => !p.hasFolded).length || 2;
-      // 2 cards dealt to each player clockwise
+    if (!pokerView) return;
+    if (pokerView.handNumber > prevHandRef.current && pokerView.players.length > 0) {
+      prevHandRef.current = pokerView.handNumber;
+      const activeCount =
+        pokerView.players.filter((p) => !p.hasFolded || p.cards.length > 0).length || 2;
       for (let r = 0; r < 2; r++) {
-        for (let i = 0; i < seatedCount; i++) {
-          const timeout = (r * seatedCount + i) * 130;
+        for (let i = 0; i < activeCount; i++) {
+          const timeout = (r * activeCount + i) * 130;
           setTimeout(() => {
             soundEngine.play("card_deal");
           }, timeout);
         }
       }
     } else {
-      prevHandRef.current = currentView.handNumber;
+      prevHandRef.current = pokerView.handNumber;
     }
-  }, [currentView.handNumber, currentView.players]);
+  }, [pokerView, handNumber]);
 
   useEffect(() => {
-    // Street advanced (Flop, Turn, River): play sequential card deal sounds
-    if (currentView.street && currentView.street !== prevStreetRef.current) {
-      prevStreetRef.current = currentView.street;
-      if (currentView.street === "flop") {
+    if (!pokerView) return;
+    if (pokerView.street && pokerView.street !== prevStreetRef.current) {
+      prevStreetRef.current = pokerView.street;
+      if (pokerView.street === "flop") {
         setTimeout(() => soundEngine.play("card_deal"), 80);
         setTimeout(() => soundEngine.play("card_deal"), 300);
         setTimeout(() => soundEngine.play("card_deal"), 520);
-      } else if (currentView.street === "turn" || currentView.street === "river") {
+      } else if (pokerView.street === "turn" || pokerView.street === "river") {
         setTimeout(() => soundEngine.play("card_deal"), 100);
       }
     } else {
-      prevStreetRef.current = currentView.street;
+      prevStreetRef.current = pokerView.street;
     }
-  }, [currentView.street]);
+  }, [pokerView, street]);
+
+  if (!pokerView) return null;
+
+  // Compute hero turn & bet requirements
+  const isMyTurn = myPlayer?.isTurn ?? false;
+  const heroCommittedThisRound = myPlayer?.committedThisRound ?? 0;
+  const toCall = Math.max(0, pokerView.currentBet - heroCommittedThisRound);
+  const minRaise =
+    pokerView.currentBet > 0 ? pokerView.currentBet * 2 : pokerView.config.bigBlind * 2;
+  const totalPot = pokerView.pots.reduce((sum, p) => sum + p.amount, 0);
+
+  const myStack = myPlayer?.stack ?? (myPlayerId ? pokerView.stacks[myPlayerId] : undefined) ?? 0;
+  const isSittingOut = Boolean(
+    myPlayerId && (pokerView.sittingOut?.includes(myPlayerId) || myPlayer?.isSittingOut),
+  );
+  const isWaitingForNextHand = Boolean(
+    !isSpectator &&
+      myPlayer &&
+      myPlayer.hasFolded &&
+      myPlayer.cards.length === 0 &&
+      pokerView.phase !== "lobby",
+  );
+  const isActivelyInHand = Boolean(
+    !isSpectator &&
+      myPlayer &&
+      !myPlayer.hasFolded &&
+      myPlayer.cards.length > 0 &&
+      pokerView.phase === "betting",
+  );
+
+  // Can switch seats between hands or when waiting/sitting out
+  const canSwitchSeat = Boolean(
+    !isSpectator &&
+      (pokerView.phase === "lobby" ||
+        pokerView.phase === "hand_summary" ||
+        isWaitingForNextHand ||
+        isSittingOut),
+  );
+
+  const eligiblePlayersCount = pokerView.participants.filter((p) => {
+    if (p.seat === null) return false;
+    if (pokerView.sittingOut?.includes(p.id)) return false;
+    const pStack = pokerView.stacks[p.id] ?? 0;
+    return pStack > 0;
+  }).length;
 
   // Check if seated player has low stack (<1000 or < bigBlind)
   const canRebuy =
-    !isSpectator &&
-    myPlayer &&
-    (myPlayer.stack < 1000 || myPlayer.stack < currentView.config.bigBlind);
+    !isSpectator && (myStack < 1000 || myStack < pokerView.config.bigBlind);
 
   const isMidHandJoiner =
-    !isSpectator &&
-    myPlayer &&
-    myPlayer.hasFolded &&
-    myPlayer.cards.length === 0 &&
-    currentView.phase !== "lobby";
+    isWaitingForNextHand && pokerView.phase !== "hand_summary" && !isSittingOut;
 
   return (
     <div
@@ -181,18 +219,18 @@ export const PokerTableScreen: React.FC = () => {
               className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase mt-0.5"
               style={{ color: "var(--felt-text)" }}
             >
-              Blinds ₹{currentView.config.smallBlind} / ₹{currentView.config.bigBlind}
+              Blinds ₹{pokerView.config.smallBlind} / ₹{pokerView.config.bigBlind}
             </span>
             <span
               className="text-[9px] font-mono tracking-wider uppercase mt-0.5 opacity-80"
               style={{ color: "var(--felt-text)" }}
             >
-              Table #{currentView.roomCode} • Hand #{currentView.handNumber}
+              Table #{pokerView.roomCode} • Hand #{pokerView.handNumber}
             </span>
           </div>
 
           {/* Table Paused / Reconnect Banner */}
-          {currentView.isPaused && (
+          {pokerView.isPaused && (
             <div className="relative z-30 mx-auto mb-2 flex items-center gap-2 bg-amber-950/90 border border-amber-500/80 px-4 py-2 rounded-2xl text-xs text-amber-100 shadow-xl backdrop-blur max-w-lg text-center animate-fade-in">
               <span className="text-base shrink-0">⏸</span>
               <div className="flex-1">
@@ -227,9 +265,9 @@ export const PokerTableScreen: React.FC = () => {
               <span className="font-semibold">
                 {rebuySent
                   ? "✓ Request for 10,000 chips sent to host!"
-                  : myPlayer.stack <= 0
+                  : myStack <= 0
                     ? "Out of chips!"
-                    : `Chips low (₹${myPlayer.stack.toLocaleString()})`}
+                    : `Chips low (₹${myStack.toLocaleString()})`}
               </span>
               {!rebuySent && (
                 <>
@@ -260,16 +298,16 @@ export const PokerTableScreen: React.FC = () => {
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="pointer-events-auto">
               <PokerCommunityArea
-                communityCards={currentView.communityCards}
-                pots={currentView.pots}
-                street={currentView.street}
-                phase={currentView.phase}
-                tableStatusMessage={currentView.tableStatusMessage}
+                communityCards={pokerView.communityCards}
+                pots={pokerView.pots}
+                street={pokerView.street}
+                phase={pokerView.phase}
+                tableStatusMessage={pokerView.tableStatusMessage}
               />
 
-              {/* Showdown / Hand Winners Celebration Overlay */}
+              {/* Showdown / Hand Winners / Between-Hands Overlay */}
               <AnimatePresence>
-                {currentView.winners && currentView.winners.length > 0 && (
+                {pokerView.winners && pokerView.winners.length > 0 ? (
                   <motion.div
                     initial={{ scale: 0.8, opacity: 0, y: 15 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -279,9 +317,9 @@ export const PokerTableScreen: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <span className="text-xl">🏆</span>
                       <span className="text-xs sm:text-sm font-black text-gold-300">
-                        {currentView.winners
+                        {pokerView.winners
                           .map((w) => {
-                            const p = currentView.players.find((pl) => pl.id === w.playerId);
+                            const p = pokerView.players.find((pl) => pl.id === w.playerId);
                             return `${p?.displayName ?? w.playerId} won ₹${w.amount.toLocaleString()} with ${w.handName}`;
                           })
                           .join(" • ")}
@@ -289,7 +327,7 @@ export const PokerTableScreen: React.FC = () => {
                     </div>
 
                     {/* Host Manual Next Hand Button */}
-                    {isHost && (
+                    {isHost && eligiblePlayersCount >= 2 && (
                       <button
                         type="button"
                         onClick={() => pokerNextHand()}
@@ -300,7 +338,28 @@ export const PokerTableScreen: React.FC = () => {
                       </button>
                     )}
                   </motion.div>
-                )}
+                ) : pokerView.phase === "hand_summary" ? (
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0, y: 10 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.9, opacity: 0 }}
+                    className="mt-3 bg-black/85 backdrop-blur-md border border-amber-500/70 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col items-center gap-1.5 text-center select-none"
+                  >
+                    <span className="text-xs font-bold text-amber-300">
+                      {pokerView.tableStatusMessage || "Between Hands — Ready for Next Hand"}
+                    </span>
+                    {isHost && eligiblePlayersCount >= 2 && (
+                      <button
+                        type="button"
+                        onClick={() => pokerNextHand()}
+                        className="mt-0.5 px-4 py-1 rounded-xl bg-gold-400 hover:bg-gold-300 active:scale-95 text-black font-black text-xs shadow-md transition-all flex items-center gap-1.5"
+                      >
+                        <span>Deal Next Hand</span>
+                        <span>➔</span>
+                      </button>
+                    )}
+                  </motion.div>
+                ) : null}
               </AnimatePresence>
             </div>
           </div>
@@ -310,11 +369,11 @@ export const PokerTableScreen: React.FC = () => {
             {orderedSeats.map((seatNum, slotIdx) => {
               const seatLayout = maxSeats <= 6 ? SEAT_POSITIONS_6 : SEAT_POSITIONS_9;
               const pos = seatLayout[slotIdx % seatLayout.length] ?? { left: "50%", top: "50%", chipPos: "top" };
-              const player = currentView.players.find((p) => p.seatNumber === seatNum) ?? null;
+              const player = pokerView.players.find((p) => p.seatNumber === seatNum) ?? null;
               const isMe = player?.id === myPlayerId;
-              const isDealerButton = currentView.dealerButtonSeat === seatNum;
-              const isSmallBlind = currentView.smallBlindSeat === seatNum;
-              const isBigBlind = currentView.bigBlindSeat === seatNum;
+              const isDealerButton = pokerView.dealerButtonSeat === seatNum;
+              const isSmallBlind = pokerView.smallBlindSeat === seatNum;
+              const isBigBlind = pokerView.bigBlindSeat === seatNum;
 
               return (
                 <div
@@ -329,12 +388,15 @@ export const PokerTableScreen: React.FC = () => {
                     isDealerButton={isDealerButton}
                     isSmallBlind={isSmallBlind}
                     isBigBlind={isBigBlind}
-                    canSit={isSpectator && !player}
-                    actionDeadline={player?.isTurn ? currentView.actionDeadline : null}
+                    canSit={!player && (isSpectator || canSwitchSeat)}
+                    isSwitchingSeat={!isSpectator}
+                    actionDeadline={player?.isTurn ? pokerView.actionDeadline : null}
+                    actionTimerSec={pokerView.config.actionTimerSec}
+                    isPaused={pokerView.isPaused}
                     onSit={() => sit(seatNum)}
                     dealOrder={slotIdx}
                     totalSeated={orderedSeats.length}
-                    handNumber={currentView.handNumber}
+                    handNumber={pokerView.handNumber}
                     chipPosition={pos.chipPos}
                     className={isMe ? "scale-100 sm:scale-110" : "scale-85 sm:scale-95"}
                   />
@@ -346,25 +408,52 @@ export const PokerTableScreen: React.FC = () => {
       </main>
 
       {/* Pinned Bottom Thumb Reach Action Bar (for seated hero) */}
-      {!isSpectator && myPlayer && (
+      {!isSpectator && (
         <div className="relative z-30 p-1 sm:p-3 pb-2 sm:pb-4 shrink-0">
-          <PokerActionBar
-            isMyTurn={isMyTurn}
-            legalActions={currentView.myLegalActions}
-            toCall={toCall}
-            currentBet={currentView.currentBet}
-            minRaise={minRaise}
-            heroStack={myPlayer.stack}
-            heroCommittedThisRound={heroCommittedThisRound}
-            potSize={totalPot}
-            bigBlind={currentView.config.bigBlind}
-            onFold={pokerFold}
-            onCheck={pokerCheck}
-            onCall={pokerCall}
-            onBet={pokerBet}
-            onRaise={pokerRaise}
-            onAllIn={pokerAllIn}
-          />
+          {isSittingOut ? (
+            <div className="w-full max-w-md mx-auto px-4 py-2 bg-black/75 backdrop-blur-md rounded-2xl border border-amber-500/50 shadow-xl flex items-center justify-between gap-3 text-xs">
+              <span className="text-amber-200 font-semibold">
+                Sitting out — you will not be dealt cards
+              </span>
+              <button
+                type="button"
+                onClick={() => pokerSitIn()}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow transition-transform active:scale-95 shrink-0"
+              >
+                Sit Back In
+              </button>
+            </div>
+          ) : isActivelyInHand && myPlayer ? (
+            <PokerActionBar
+              isMyTurn={isMyTurn}
+              isInHand={isActivelyInHand}
+              handNumber={pokerView.handNumber}
+              legalActions={pokerView.myLegalActions}
+              toCall={toCall}
+              currentBet={pokerView.currentBet}
+              minRaise={minRaise}
+              heroStack={myPlayer.stack}
+              heroCommittedThisRound={heroCommittedThisRound}
+              potSize={totalPot}
+              bigBlind={pokerView.config.bigBlind}
+              onFold={pokerFold}
+              onCheck={pokerCheck}
+              onCall={pokerCall}
+              onBet={pokerBet}
+              onRaise={pokerRaise}
+              onAllIn={pokerAllIn}
+            />
+          ) : (
+            <div className="w-full max-w-md mx-auto px-4 py-2 bg-black/65 backdrop-blur-md rounded-2xl border border-emerald-800/60 text-center text-xs text-emerald-300/90 shadow">
+              {pokerView.phase === "hand_summary"
+                ? eligiblePlayersCount < 2
+                  ? "Waiting for at least 2 seated players to start next hand…"
+                  : "Between hands — click any empty seat to switch seats"
+                : isWaitingForNextHand
+                  ? "Seat reserved • Waiting for next hand (click any empty seat to move)"
+                  : "Folded • Waiting for current hand to finish"}
+            </div>
+          )}
         </div>
       )}
 

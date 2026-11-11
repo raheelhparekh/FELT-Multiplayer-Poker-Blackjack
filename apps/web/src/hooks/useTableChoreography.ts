@@ -91,7 +91,32 @@ export function useTableChoreography(currentView: ClientGameView | null): TableC
 
     // ─── 2. Initial Deal Choreography ───────────────────────────────────────────
     // Fires once per round when the dealing snapshot first arrives.
-    const isNewDeal = hands.length > 0 && hasDealtThisRoundRef.current !== roundNumber;
+    const isInitialDealPhase =
+      phase === "dealing" ||
+      phase === "insurance" ||
+      phase === "peek" ||
+      (phase === "player_turns" && hands.every((h) => h.cards.length <= 2 && !h.isLocked));
+
+    if (
+      hands.length > 0 &&
+      hasDealtThisRoundRef.current !== roundNumber &&
+      !isInitialDealPhase
+    ) {
+      // Joined or reconnected mid-round: mark round as dealt with current cards visible
+      // immediately and fall through to Phase 4 (dealer_turn / settlement / round_summary).
+      hasDealtThisRoundRef.current = roundNumber;
+      const allDealt: Record<string, number> = {};
+      for (const h of hands) allDealt[h.id] = h.cards.length;
+      setDealtCardsPerHand(allDealt);
+      setDealerCardCount(dealerHand?.cards.length ?? 2);
+      setStatusMessage(null);
+      isDealingRef.current = false;
+    }
+
+    const isNewDeal =
+      hands.length > 0 &&
+      hasDealtThisRoundRef.current !== roundNumber &&
+      isInitialDealPhase;
 
     if (isNewDeal) {
       clearTimers();

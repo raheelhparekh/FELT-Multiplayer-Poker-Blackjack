@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useGameStore } from "../../store/game-store";
+import { motion } from "framer-motion";
 import { soundEngine } from "../../audio/sound-engine";
 
 interface PokerActionBarProps {
   isMyTurn: boolean;
+  isInHand?: boolean;
+  handNumber?: number;
   legalActions: string[];
   toCall: number;
   currentBet: number;
@@ -23,6 +24,8 @@ interface PokerActionBarProps {
 
 export const PokerActionBar: React.FC<PokerActionBarProps> = ({
   isMyTurn,
+  isInHand = true,
+  handNumber = 0,
   legalActions,
   toCall,
   currentBet,
@@ -52,6 +55,11 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
   // Pre-action selection when waiting for turn
   const [preAction, setPreAction] = useState<"checkFold" | "check" | "callAny" | null>(null);
 
+  // Clear stale pre-action whenever a new hand starts or hero is not actively in the hand
+  useEffect(() => {
+    setPreAction(null);
+  }, [handNumber, isInHand]);
+
   // Reset bet amount when it becomes hero's turn
   useEffect(() => {
     if (isMyTurn) {
@@ -67,7 +75,7 @@ export const PokerActionBar: React.FC<PokerActionBarProps> = ({
       }
       setPreAction(null);
     }
-  }, [isMyTurn]);
+  }, [isMyTurn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Quick preset calculation
   const setQuickBet = (fraction: number) => {

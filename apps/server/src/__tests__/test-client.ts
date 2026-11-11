@@ -176,13 +176,16 @@ export class TestClient {
     });
   }
 
-  public async pokerSeeCards(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.socket?.emit("poker:seeCards", {}, (res: { ok: boolean; error?: ServerError }) => {
-        if (!res?.ok) return reject(new Error(res?.error?.message ?? "poker:seeCards failed"));
-        resolve();
-      });
-    });
+  public async pokerSitOut(): Promise<void> {
+    return this.emitIntent("poker:sitOut");
+  }
+
+  public async pokerSitIn(): Promise<void> {
+    return this.emitIntent("poker:sitIn");
+  }
+
+  public async endSession(): Promise<void> {
+    return this.emitIntent("host:endSession");
   }
 
   public async pokerNextHand(): Promise<void> {

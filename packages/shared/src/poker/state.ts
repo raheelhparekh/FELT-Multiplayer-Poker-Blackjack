@@ -30,8 +30,6 @@ export interface PokerPlayerState {
   actedThisRound: boolean;
   /** If the player voluntarily showed their cards at the end. */
   showedCards?: boolean;
-  /** Whether the player has peeked at / seen their hole cards during this hand. */
-  hasSeenCards?: boolean;
 }
 
 export interface HandWinner {
@@ -90,7 +88,15 @@ export interface PokerState {
 
   actionDeadline: number | null;
   handSummaryDeadline: number | null;
-  pausedRemainingMs: number | null;
+  pausedRemainingMs:
+    | number
+    | {
+        bet: number | null;
+        action: number | null;
+        insurance: number | null;
+        handSummary?: number | null;
+      }
+    | null;
 
   winners: HandWinner[] | null;
   handHistory: HandHistoryEntry[];
@@ -99,4 +105,5 @@ export interface PokerState {
   isSessionStarted: boolean;
   isPaused: boolean;
   tableStatusMessage: string | null;
+  waitingForReconnect?: string | null;
 }

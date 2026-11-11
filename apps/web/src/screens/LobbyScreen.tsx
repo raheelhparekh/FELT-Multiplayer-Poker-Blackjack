@@ -31,7 +31,9 @@ export const LobbyScreen: React.FC = () => {
   const mySeat = myParticipant?.seat ?? null;
 
   // Seats 1 to maxSeats (7 for BJ, 9 for Poker)
-  const maxSeats = isPoker ? ((config as any).maxSeats ?? 9) : 7;
+  const maxSeats = isPoker
+    ? ((config as any).maxPlayerSeats ?? (config as any).maxSeats ?? 9)
+    : 7;
   const seats: SeatNumber[] = Array.from({ length: maxSeats }, (_, i) => (i + 1) as SeatNumber);
 
   const handleShare = async () => {
@@ -291,9 +293,9 @@ export const LobbyScreen: React.FC = () => {
                   {isHost ? (
                     <select
                       aria-label="Poker action timer"
-                      value={(config as any).actionTimer ?? 30}
+                      value={(config as any).actionTimerSec ?? (config as any).actionTimer ?? 30}
                       onChange={(e) =>
-                        updateConfig({ actionTimer: Number.parseInt(e.target.value, 10) })
+                        updateConfig({ actionTimerSec: Number.parseInt(e.target.value, 10) } as any)
                       }
                       className="w-full bg-emerald-950/80 border border-emerald-800/80 text-white rounded px-2 py-1 font-mono font-bold text-xs"
                     >
@@ -303,7 +305,9 @@ export const LobbyScreen: React.FC = () => {
                       <option value={60}>60s</option>
                     </select>
                   ) : (
-                    <span className="font-bold text-white font-mono">{(config as any).actionTimer ?? 30}s</span>
+                    <span className="font-bold text-white font-mono">
+                      {(config as any).actionTimerSec ?? (config as any).actionTimer ?? 30}s
+                    </span>
                   )}
                 </div>
 

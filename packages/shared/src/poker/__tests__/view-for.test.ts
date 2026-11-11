@@ -141,28 +141,30 @@ describe("Poker ViewFor & Hidden Information Contract (§6, §12.5)", () => {
     expect(bobInView.cards[0]!.hidden).toBe(false);
   });
 
-  it("synchronizes hasSeenCards state across players without card leakage", () => {
+  it("includes seated sitting-out players in view so seats do not appear empty", () => {
     const { state } = setupGame();
+    state.participants.set("charlie", {
+      id: "charlie",
+      displayName: "Charlie",
+      avatarId: "av-charlie",
+      role: "player",
+      seat: 3,
+      isConnected: true,
+      isGuest: false,
+    });
+    state.stacks.set("charlie", 1000);
+    state.sittingOut.add("charlie");
+
     const { state: s1 } = reduce(state, { type: "poker:startHand" });
 
-    // Initially both players start as blind (hasSeenCards = false)
-    const bobViewInitial = viewFor(s1, "bob");
-    const aliceInBobView1 = bobViewInitial.players.find((p) => p.id === "alice")!;
-    expect(aliceInBobView1.hasSeenCards).toBe(false);
-    expect(aliceInBobView1.cards[0]!.hidden).toBe(true);
-
-    // Alice sees her cards
-    const { state: s2, events } = reduce(s1, { type: "poker:seeCards", playerId: "alice" });
-    expect(events).toContainEqual({ type: "playerSeenCards", playerId: "alice" });
-
-    // Bob's view now shows Alice has seen her cards
-    const bobViewAfter = viewFor(s2, "bob");
-    const aliceInBobView2 = bobViewAfter.players.find((p) => p.id === "alice")!;
-    expect(aliceInBobView2.hasSeenCards).toBe(true);
-
-    // Crucially: Bob still CANNOT see Alice's card identities (hidden is true, no leak)
-    expect(aliceInBobView2.cards[0]!.hidden).toBe(true);
-    expect("card" in aliceInBobView2.cards[0]!).toBe(false);
+    const aliceView = viewFor(s1, "alice");
+    const charlieInView = aliceView.players.find((p) => p.id === "charlie");
+    expect(charlieInView).toBeDefined();
+    expect(charlieInView!.seatNumber).toBe(3);
+    expect(charlieInView!.isSittingOut).toBe(true);
+    expect(charlieInView!.isWaiting).toBe(true);
+    expect(charlieInView!.cards).toHaveLength(0);
+    expect(aliceView.sittingOut).toContain("charlie");
   });
 
   it("exposes accurate stacks, totalBuyIns, initialBuyIns and rebuys for PNL ledger", () => {

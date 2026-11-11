@@ -457,10 +457,10 @@ export function setupSocketIO(
       (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
         try {
           const { room, playerId } = getRoomAndPlayer();
-          if (ack) ack({ ok: true });
           room.closeTable(playerId);
           socket.data.roomCode = undefined;
           socket.data.playerId = undefined;
+          if (ack) ack({ ok: true });
         } catch (err) {
           handleError(err, data?.actionId, ack);
         }
@@ -749,7 +749,6 @@ export function setupSocketIO(
           else if (data.action === "bet") action = { type: "poker:bet", playerId, amount: data.amount ?? 0 };
           else if (data.action === "raise") action = { type: "poker:raise", playerId, to: data.to ?? data.amount ?? 0 };
           else if (data.action === "allIn") action = { type: "poker:allIn", playerId };
-          else if (data.action === "seeCards") action = { type: "poker:seeCards", playerId };
           else throw new EngineError("ILLEGAL_ACTION", `Unknown poker action: ${data.action}`);
 
           room.dispatch(playerId, action, data.actionId);
@@ -855,19 +854,6 @@ export function setupSocketIO(
         try {
           const { room, playerId } = getRoomAndPlayer();
           room.dispatch(playerId, { type: "poker:showCards", playerId }, data?.actionId);
-          if (ack) ack({ ok: true });
-        } catch (err) {
-          handleError(err, data?.actionId, ack);
-        }
-      },
-    );
-
-    socket.on(
-      "poker:seeCards",
-      (data: { actionId?: string } | undefined, ack?: (res: unknown) => void) => {
-        try {
-          const { room, playerId } = getRoomAndPlayer();
-          room.dispatch(playerId, { type: "poker:seeCards", playerId }, data?.actionId);
           if (ack) ack({ ok: true });
         } catch (err) {
           handleError(err, data?.actionId, ack);

@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGameStore } from "../../store/game-store";
 
 export const ChatDrawer: React.FC = () => {
@@ -14,7 +14,11 @@ export const ChatDrawer: React.FC = () => {
     activeModal === "activity" ? "activity" : "chat",
   );
   const [inputText, setInputText] = useState("");
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevOpenRef = useRef<boolean>(false);
+
+  const isOpen = activeModal === "chat" || activeModal === "activity";
 
   useEffect(() => {
     if (activeModal === "activity") {
@@ -24,11 +28,35 @@ export const ChatDrawer: React.FC = () => {
     }
   }, [activeModal]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatLog, activityLog, activeTab]);
+  // Snap immediately to the bottom on open or tab switch, and scroll smoothly on new messages
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      prevOpenRef.current = false;
+      return;
+    }
 
-  if (activeModal !== "chat" && activeModal !== "activity") {
+    const container = scrollContainerRef.current;
+    const justOpened = !prevOpenRef.current;
+    prevOpenRef.current = true;
+
+    const scrollToBottom = (instant: boolean) => {
+      if (container) {
+        if (instant) {
+          container.scrollTop = container.scrollHeight;
+        } else {
+          container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+        }
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: instant ? "auto" : "smooth" });
+      }
+    };
+
+    scrollToBottom(justOpened);
+    const rafId = requestAnimationFrame(() => scrollToBottom(justOpened));
+    return () => cancelAnimationFrame(rafId);
+  }, [isOpen, activeTab, chatLog.length, activityLog.length]);
+
+  if (!isOpen) {
     return null;
   }
 
@@ -99,7 +127,10 @@ export const ChatDrawer: React.FC = () => {
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 font-sans text-sm">
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto p-4 space-y-3 font-sans text-sm"
+        >
           {activeTab === "chat" ? (
             chatLog.length === 0 ? (
               <div className="h-full flex items-center justify-center text-emerald-500/40 text-xs italic">
